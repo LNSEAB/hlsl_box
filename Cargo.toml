@@ -1,0 +1,23 @@
+[package]
+name = "hlsl_box"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+coinit = "0.1.1"
+thiserror = "1.0.30"
+wita = "0.13.1"
+ifdlg = { git = "https://github.com/LNSEAB/ifdlg" }
+libc = "0.2.121"
+anyhow = { version = "1.0.56", features = ["backtrace"] }
+mltg = "0.8.0"
+
+[dependencies.windows]
+version = "0.34.0"
+features = [
+    "Win32_Foundation",
+    "Win32_Graphics_Dxgi",
+    "Win32_Graphics_Dxgi_Common",
+    "Win32_Graphics_Direct3D12",
+    "Win32_Graphics_Direct3D_Dxc",
+]
