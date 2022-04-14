@@ -357,7 +357,7 @@ struct PixelShader {
 impl PixelShader {
     fn new(device: &ID3D12Device, compiler: &hlsl::Compiler) -> anyhow::Result<Self> {
         unsafe {
-            let root_signature = {
+            let root_signature: ID3D12RootSignature = {
                 let params = [D3D12_ROOT_PARAMETER {
                     ParameterType: D3D12_ROOT_PARAMETER_TYPE_CBV,
                     ShaderVisibility: D3D12_SHADER_VISIBILITY_PIXEL,
@@ -391,6 +391,7 @@ impl PixelShader {
                     ),
                 )?
             };
+            root_signature.SetName("PixelShader::root_signature")?;
             let parameters = Buffer::new(
                 "PixelShader::parameters",
                 device,
