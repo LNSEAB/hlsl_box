@@ -142,6 +142,7 @@ pub struct Buffer(ID3D12Resource);
 
 impl Buffer {
     pub fn new(
+        name: &str,
         device: &ID3D12Device,
         heap_props: HeapProperties,
         size: u64,
@@ -160,7 +161,7 @@ impl Buffer {
         };
         unsafe {
             let mut buffer: Option<ID3D12Resource> = None;
-            device
+            let buffer = device
                 .CreateCommittedResource(
                     &heap_props.into(),
                     heap_flags.unwrap_or(D3D12_HEAP_FLAG_NONE),
@@ -169,8 +170,9 @@ impl Buffer {
                     std::ptr::null(),
                     &mut buffer,
                 )
-                .map(|_| Self(buffer.unwrap()))
-                .map_err(|e| e.into())
+                .map(|_| buffer.unwrap())?;
+            buffer.SetName(name)?;
+            Ok(Self(buffer))
         }
     }
 

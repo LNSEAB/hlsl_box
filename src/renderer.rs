@@ -65,6 +65,7 @@ impl Plane {
         const BUFFER_SIZE: u64 = std::mem::size_of::<PlaneBuffer>() as _;
         unsafe {
             let buffer = Buffer::new(
+                "Plane::buffer",
                 device,
                 HeapProperties::new(D3D12_HEAP_TYPE_DEFAULT),
                 BUFFER_SIZE,
@@ -73,6 +74,7 @@ impl Plane {
             )?;
             let uploader = {
                 let uploader = Buffer::new(
+                    "Plane::uploader",
                     device,
                     HeapProperties::new(D3D12_HEAP_TYPE_UPLOAD),
                     BUFFER_SIZE + (16 - BUFFER_SIZE % 16) % 16,
@@ -390,6 +392,7 @@ impl PixelShader {
                 )?
             };
             let parameters = Buffer::new(
+                "PixelShader::parameters",
                 device,
                 HeapProperties::new(D3D12_HEAP_TYPE_UPLOAD),
                 std::mem::size_of::<Parameters>() as _,
