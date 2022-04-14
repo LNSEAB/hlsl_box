@@ -1,0 +1,11 @@
+[window]
+x = 0
+y = 0
+width = 1024
+height = 768
+
+[shader]
+ps = "ps_6_4"
+
+[appearance]
+clear_color = [0.0, 0.0, 0.3]

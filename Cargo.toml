@@ -4,18 +4,24 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-coinit = "0.1.1"
+coinit = "0.1.2"
 thiserror = "1.0.30"
-wita = "0.13.1"
+wita = "0.13.2"
 ifdlg = { git = "https://github.com/LNSEAB/ifdlg" }
 libc = "0.2.121"
 anyhow = { version = "1.0.56", features = ["backtrace"] }
-mltg = "0.8.0"
+mltg = "0.8.1"
+tracing = "0.1.32"
+tracing-subscriber = "0.3.10"
+serde = { version = "1.0.136", features = ["derive"] }
+toml = "0.5.8"
+tokio = { version = "1.17.0", features = ["full"] }
 
 [dependencies.windows]
-version = "0.34.0"
+version = "0.35.0"
 features = [
     "Win32_Foundation",
+    "Win32_Graphics_Direct3D",
     "Win32_Graphics_Dxgi",
     "Win32_Graphics_Dxgi_Common",
     "Win32_Graphics_Direct3D12",
