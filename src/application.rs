@@ -47,7 +47,9 @@ impl Application {
     }
 
     fn load_file(&mut self, path: &Path) -> anyhow::Result<()> {
-        let blob = self.compiler.compile_from_file(path, "main", &self.settings.shader.ps)?;
+        let blob = self
+            .compiler
+            .compile_from_file(path, "main", &self.settings.shader.ps)?;
         let ps = self.renderer.create_pixel_shader_pipeline(&blob)?;
         let resolution = self.windows.main_window.inner_size();
         let parameters = Parameters {
@@ -55,25 +57,23 @@ impl Application {
             mouse: self.mouse.clone(),
             time: 0.0,
         };
-        self.state = State::Rendering(Rendering {
-            parameters,
-            ps,
-        });
+        self.state = State::Rendering(Rendering { parameters, ps });
         Ok(())
     }
 
     pub fn run(&mut self) -> anyhow::Result<()> {
         loop {
             match self.windows.event.try_recv() {
-                Ok(WindowEvent::LoadFile(path)) => {
-                    match self.load_file(&path) {
-                        Ok(_) => info!("load file: {}", path.display()),
-                        Err(e) => error!("{}", e),
-                    }
-                }
+                Ok(WindowEvent::LoadFile(path)) => match self.load_file(&path) {
+                    Ok(_) => info!("load file: {}", path.display()),
+                    Err(e) => error!("{}", e),
+                },
                 Ok(WindowEvent::Resized(size)) => {
                     if let Err(e) = self.renderer.resize(size) {
                         error!("{}", e);
+                    }
+                    if let State::Rendering(r) = &mut self.state {
+                        r.parameters.resolution = [size.width as _, size.height as _];
                     }
                 }
                 Ok(WindowEvent::CursorMoved(pos)) => {
@@ -86,11 +86,10 @@ impl Application {
                 _ => {}
             }
             let ret = match &self.state {
-                State::Init => {
-                    self.renderer.render(&self.clear_color, None, None)
-                }
+                State::Init => self.renderer.render(&self.clear_color, None, None),
                 State::Rendering(r) => {
-                    self.renderer.render(&self.clear_color, Some(&r.ps), Some(&r.parameters))
+                    self.renderer
+                        .render(&self.clear_color, Some(&r.ps), Some(&r.parameters))
                 }
             };
             if let Err(e) = ret {

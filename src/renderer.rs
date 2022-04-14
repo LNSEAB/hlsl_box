@@ -1,5 +1,5 @@
 use crate::*;
-use std::cell::Cell;
+use std::cell::{Cell, RefCell};
 use windows::core::{Interface, PCSTR};
 use windows::Win32::{
     Foundation::*,
@@ -140,6 +140,7 @@ impl Plane {
     }
 }
 
+#[derive(Clone)]
 struct Signal {
     fence: ID3D12Fence,
     value: u64,
@@ -253,6 +254,7 @@ impl SwapChain {
                     NumDescriptors: desc.BufferCount,
                     ..Default::default()
                 })?;
+            rtv_heap.SetName("SwapChain::rtv_heap")?;
             let rtv_size =
                 device.GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_RTV) as usize;
             let mut back_buffers = Vec::with_capacity(desc.BufferCount as _);
@@ -260,6 +262,7 @@ impl SwapChain {
             for i in 0..desc.BufferCount {
                 let buffer: ID3D12Resource = swap_chain.GetBuffer(i)?;
                 device.CreateRenderTargetView(&buffer, std::ptr::null(), handle);
+                buffer.SetName(format!("SwapChain::back_buffers[{}]", i))?;
                 back_buffers.push(buffer);
                 handle.ptr += rtv_size;
             }
@@ -280,12 +283,12 @@ impl SwapChain {
         }
     }
 
-    fn current_buffer(&self) -> (D3D12_CPU_DESCRIPTOR_HANDLE, ID3D12Resource) {
+    fn current_buffer(&self) -> (D3D12_CPU_DESCRIPTOR_HANDLE, ID3D12Resource, usize) {
         unsafe {
             let index = self.swap_chain.GetCurrentBackBufferIndex() as usize;
             let mut handle = self.rtv_heap.GetCPUDescriptorHandleForHeapStart();
             handle.ptr += self.rtv_size * index;
-            (handle, self.back_buffers[index].clone())
+            (handle, self.back_buffers[index].clone(), index)
         }
     }
 
@@ -495,9 +498,10 @@ pub struct Renderer {
     _d3d12_device: ID3D12Device,
     swap_chain: SwapChain,
     pixel_shader: PixelShader,
-    cmd_allocator: ID3D12CommandAllocator,
+    cmd_allocators: Vec<ID3D12CommandAllocator>,
     cmd_list: ID3D12GraphicsCommandList,
     wait_event: Event,
+    signals: RefCell<Vec<Option<Signal>>>,
 }
 
 impl Renderer {
@@ -514,23 +518,30 @@ impl Renderer {
                     .map(|_| device.unwrap())?
             };
             let swap_chain = SwapChain::new(&d3d12_device, window)?;
-            let cmd_allocator =
-                d3d12_device.CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT)?;
+            let mut cmd_allocators = Vec::with_capacity(2);
+            for i in 0..2 {
+                let cmd_allocator: ID3D12CommandAllocator =
+                    d3d12_device.CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT)?;
+                cmd_allocator.SetName(format!("Renderer::cmd_allocators[{}]", i))?;
+                cmd_allocators.push(cmd_allocator);
+            }
             let cmd_list: ID3D12GraphicsCommandList = d3d12_device.CreateCommandList(
                 0,
                 D3D12_COMMAND_LIST_TYPE_DIRECT,
-                &cmd_allocator,
+                &cmd_allocators[0],
                 None,
             )?;
+            cmd_list.SetName("Renderer::cmd_list")?;
             cmd_list.Close()?;
             let pixel_shader = PixelShader::new(&d3d12_device, compiler)?;
             Ok(Self {
                 _d3d12_device: d3d12_device,
                 swap_chain,
                 pixel_shader,
-                cmd_allocator,
+                cmd_allocators,
                 cmd_list,
                 wait_event: Event::new()?,
+                signals: RefCell::new(vec![None; 2]),
             })
         }
     }
@@ -549,10 +560,17 @@ impl Renderer {
         parameters: Option<&Parameters>,
     ) -> anyhow::Result<()> {
         let swap_chain_desc = self.swap_chain.desc()?;
-        let (handle, back_buffer) = self.swap_chain.current_buffer();
+        let (handle, back_buffer, index) = self.swap_chain.current_buffer();
+        if let Some(signal) = self.signals.borrow_mut()[index].take() {
+            if !signal.is_completed() {
+                signal.set_event(&self.wait_event)?;
+                self.wait_event.wait();
+            }
+        }
+        let cmd_allocator = &self.cmd_allocators[index];
         unsafe {
-            self.cmd_allocator.Reset()?;
-            self.cmd_list.Reset(&self.cmd_allocator, None)?;
+            cmd_allocator.Reset()?;
+            self.cmd_list.Reset(cmd_allocator, None)?;
             transition_barriers(
                 &self.cmd_list,
                 [TransitionBarrier {
@@ -599,15 +617,30 @@ impl Renderer {
             self.cmd_list.Close()?;
         }
         let signal = self.swap_chain.present(1, &[Some(self.cmd_list.cast()?)])?;
-        if !signal.is_completed() {
-            signal.set_event(&self.wait_event)?;
-            self.wait_event.wait();
-        }
+        self.signals.borrow_mut()[index] = Some(signal);
         Ok(())
     }
 
     pub fn resize(&mut self, size: wita::PhysicalSize<u32>) -> anyhow::Result<()> {
+        self.wait_all_signals();
         self.swap_chain.resize(size)?;
         Ok(())
+    }
+
+    fn wait_all_signals(&self) {
+        for signal in self.signals.borrow().iter() {
+            if let Some(signal) = signal {
+                if !signal.is_completed() {
+                    signal.set_event(&self.wait_event).unwrap();
+                    self.wait_event.wait();
+                }
+            }
+        }
+    }
+}
+
+impl Drop for Renderer {
+    fn drop(&mut self) {
+        self.wait_all_signals();
     }
 }
