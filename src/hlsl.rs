@@ -191,7 +191,7 @@ mod tests {
     #[test]
     fn compile_from_str() {
         let compiler = Compiler::new().unwrap();
-        let data = include_str!("shader/plane.hlsl");
+        let data = include_str!("shader/test.hlsl");
         compiler
             .compile_from_str(data, "vs_main", "vs_6_0")
             .unwrap();
@@ -203,7 +203,7 @@ mod tests {
     #[test]
     fn compile_from_file() {
         let compiler = Compiler::new().unwrap();
-        let path = "src/shader/plane.hlsl";
+        let path = "src/shader/test.hlsl";
         compiler
             .compile_from_file(path, "vs_main", "vs_6_0")
             .unwrap();
