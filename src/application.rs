@@ -49,9 +49,12 @@ impl Application {
     }
 
     fn load_file(&mut self, path: &Path) -> anyhow::Result<()> {
-        let blob = self
-            .compiler
-            .compile_from_file(path, "main", &self.settings.shader.ps, &self.settings.shader.ps_args)?;
+        let blob = self.compiler.compile_from_file(
+            path,
+            "main",
+            &self.settings.shader.ps,
+            &self.settings.shader.ps_args,
+        )?;
         let ps = self.renderer.create_pixel_shader_pipeline(&blob)?;
         let resolution = self.windows.main_window.inner_size();
         let parameters = Parameters {

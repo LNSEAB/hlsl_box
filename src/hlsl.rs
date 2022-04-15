@@ -70,15 +70,13 @@ fn create_instance<T: Interface>(clsid: &GUID) -> Result<T, Error> {
     }
 }
 
-fn create_args(entry_point: &str, target: &str, path: Option<&str>, opts: &Vec<String>) -> (Vec<PWSTR>, Vec<Vec<u16>>) {
-    let mut args = vec![
-        "-E",
-        entry_point,
-        "-T",
-        target,
-        "-I",
-        "./include",
-    ];
+fn create_args(
+    entry_point: &str,
+    target: &str,
+    path: Option<&str>,
+    opts: &Vec<String>,
+) -> (Vec<PWSTR>, Vec<Vec<u16>>) {
+    let mut args = vec!["-E", entry_point, "-T", target, "-I", "./include"];
     for opt in opts.iter() {
         args.push(opt);
     }

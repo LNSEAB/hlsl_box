@@ -411,8 +411,12 @@ impl PixelShader {
                 None,
             )?;
             let plane = Plane::new(device)?;
-            let vs =
-                compiler.compile_from_str(include_str!("./shader/plane.hlsl"), "main", "vs_6_4", &vec![])?;
+            let vs = compiler.compile_from_str(
+                include_str!("./shader/plane.hlsl"),
+                "main",
+                "vs_6_4",
+                &vec![],
+            )?;
             Ok(Self {
                 device: device.clone(),
                 root_signature,
