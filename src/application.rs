@@ -1,7 +1,8 @@
 use crate::*;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 struct Rendering {
+    path: PathBuf,
     parameters: Parameters,
     ps: PixelShaderPipeline,
 }
@@ -21,6 +22,7 @@ pub struct Application {
     state: State,
     mouse: [f32; 2],
     start_time: std::time::Instant,
+    dir: Option<DirMonitor>,
 }
 
 impl Application {
@@ -45,10 +47,12 @@ impl Application {
             state: State::Init,
             mouse: [0.0, 0.0],
             start_time: std::time::Instant::now(),
+            dir: None,
         })
     }
 
     fn load_file(&mut self, path: &Path) -> anyhow::Result<()> {
+        assert!(path.is_file());
         let blob = self.compiler.compile_from_file(
             path,
             "main",
@@ -63,21 +67,28 @@ impl Application {
             time: 0.0,
         };
         self.renderer.wait_all_signals();
-        self.state = State::Rendering(Rendering { parameters, ps });
+        self.state = State::Rendering(Rendering {
+            path: path.to_path_buf(),
+            parameters,
+            ps,
+        });
         self.start_time = std::time::Instant::now();
+        self.dir = Some(DirMonitor::new(path.parent().unwrap())?);
+        self.windows
+            .main_window
+            .set_title(format!("HLSLBox {}", path.display()));
+        info!("load file: {}", path.display());
         Ok(())
     }
 
     pub fn run(&mut self) -> anyhow::Result<()> {
         loop {
             match self.windows.event.try_recv() {
-                Ok(WindowEvent::LoadFile(path)) => match self.load_file(&path) {
-                    Ok(_) => {
-                        self.windows.main_window.set_title(format!("HLSLBox {}", path.display()));
-                        info!("load file: {}", path.display());
+                Ok(WindowEvent::LoadFile(path)) => {
+                    if let Err(e) = self.load_file(&path) {
+                        error!("{}", e);
                     }
-                    Err(e) => error!("{}", e),
-                },
+                }
                 Ok(WindowEvent::Resized(size)) => {
                     debug!("WindowEvent::Resized");
                     if let Err(e) = self.renderer.resize(size) {
@@ -88,6 +99,15 @@ impl Application {
                     }
                 }
                 _ => {}
+            }
+            if let Some(path) = self.dir.as_ref().and_then(|dir| dir.try_recv()) {
+                if let State::Rendering(r) = &self.state {
+                    if r.path == path {
+                        if let Err(e) = self.load_file(&path) {
+                            error!("{}", e);
+                        }
+                    }
+                }
             }
             if self.windows.main_window.is_closed() {
                 break;

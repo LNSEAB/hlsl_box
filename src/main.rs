@@ -1,5 +1,6 @@
 mod application;
 mod hlsl;
+mod monitor;
 mod renderer;
 mod settings;
 mod utility;
@@ -9,6 +10,7 @@ use std::sync::Arc;
 use tracing::{debug, error, info};
 
 use application::Application;
+use monitor::*;
 use renderer::*;
 use settings::Settings;
 use utility::*;
