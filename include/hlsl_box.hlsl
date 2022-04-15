@@ -12,5 +12,5 @@ struct Parameters {
 ConstantBuffer<Parameters> HLSLBox: register(b0);
 
 float2 normalized_position(float2 coord) {
-    return (coord * 2.0 - HLSLBox.resolution) / max(HLSLBox.resolution.x, HLSLBox.resolution.y);
+    return (coord * 2.0 - HLSLBox.resolution) / min(HLSLBox.resolution.x, HLSLBox.resolution.y);
 }

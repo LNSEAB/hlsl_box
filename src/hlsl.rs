@@ -70,8 +70,18 @@ fn create_instance<T: Interface>(clsid: &GUID) -> Result<T, Error> {
     }
 }
 
-fn create_args(entry_point: &str, target: &str, path: Option<&str>) -> (Vec<PWSTR>, Vec<Vec<u16>>) {
-    let mut args = vec!["-E", entry_point, "-T", target, "-I", "./include"];
+fn create_args(entry_point: &str, target: &str, path: Option<&str>, opts: &Vec<String>) -> (Vec<PWSTR>, Vec<Vec<u16>>) {
+    let mut args = vec![
+        "-E",
+        entry_point,
+        "-T",
+        target,
+        "-I",
+        "./include",
+    ];
+    for opt in opts.iter() {
+        args.push(opt);
+    }
     if let Some(path) = path {
         args.push(path);
     }
@@ -160,8 +170,9 @@ impl Compiler {
         data: &str,
         entry_point: &str,
         target: &str,
+        args: &Vec<String>,
     ) -> Result<Blob, Error> {
-        let (args, _tmp) = create_args(entry_point, target, None);
+        let (args, _tmp) = create_args(entry_point, target, None, args);
         self.compile_impl(data, &args)
     }
 
@@ -170,6 +181,7 @@ impl Compiler {
         path: impl AsRef<Path>,
         entry_point: &str,
         target: &str,
+        args: &Vec<String>,
     ) -> Result<Blob, Error> {
         let path = path.as_ref();
         let data = {
@@ -179,7 +191,7 @@ impl Compiler {
             reader.read_to_string(&mut data)?;
             data
         };
-        let (args, _tmp) = create_args(entry_point, target, path.to_str());
+        let (args, _tmp) = create_args(entry_point, target, path.to_str(), args);
         self.compile_impl(&data, &args)
     }
 }
@@ -193,10 +205,10 @@ mod tests {
         let compiler = Compiler::new().unwrap();
         let data = include_str!("shader/test.hlsl");
         compiler
-            .compile_from_str(data, "vs_main", "vs_6_0")
+            .compile_from_str(data, "vs_main", "vs_6_0", &vec![])
             .unwrap();
         compiler
-            .compile_from_str(data, "ps_main", "ps_6_0")
+            .compile_from_str(data, "ps_main", "ps_6_0", &vec![])
             .unwrap();
     }
 
@@ -205,10 +217,10 @@ mod tests {
         let compiler = Compiler::new().unwrap();
         let path = "src/shader/test.hlsl";
         compiler
-            .compile_from_file(path, "vs_main", "vs_6_0")
+            .compile_from_file(path, "vs_main", "vs_6_0", &vec![])
             .unwrap();
         compiler
-            .compile_from_file(path, "ps_main", "ps_6_0")
+            .compile_from_file(path, "ps_main", "ps_6_0", &vec![])
             .unwrap();
     }
 }

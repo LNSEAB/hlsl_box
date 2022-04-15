@@ -1,24 +1,25 @@
 use crate::*;
 use std::path::PathBuf;
 use std::sync::Arc;
-use tokio::sync::*;
+use std::sync::*;
 
 pub enum WindowEvent {
     LoadFile(PathBuf),
-    CursorMoved(wita::PhysicalPosition<i32>),
     Resized(wita::PhysicalSize<u32>),
     Closed,
 }
 
 pub struct WindowReceiver {
     pub main_window: wita::Window,
-    pub event: mpsc::UnboundedReceiver<WindowEvent>,
+    pub event: mpsc::Receiver<WindowEvent>,
+    pub cursor_position: Arc<Mutex<wita::PhysicalPosition<i32>>>,
 }
 
 struct Window {
     main_window: wita::Window,
-    event: mpsc::UnboundedSender<WindowEvent>,
+    event: mpsc::Sender<WindowEvent>,
     settings: Arc<Settings>,
+    cursor_position: Arc<Mutex<wita::PhysicalPosition<i32>>>,
 }
 
 impl Window {
@@ -35,16 +36,19 @@ impl Window {
             ))
             .accept_drag_files(true)
             .build()?;
-        let (tx, rx) = mpsc::unbounded_channel();
+        let (tx, rx) = mpsc::channel();
+        let cursor_position = Arc::new(Mutex::new(wita::PhysicalPosition::new(0, 0)));
         Ok((
             Self {
                 main_window: main_window.clone(),
                 event: tx,
                 settings,
+                cursor_position: cursor_position.clone(),
             },
             WindowReceiver {
                 main_window,
                 event: rx,
+                cursor_position,
             },
         ))
     }
@@ -67,9 +71,8 @@ impl wita::EventHandler for Window {
 
     fn cursor_moved(&mut self, ev: wita::event::CursorMoved) {
         if ev.window == &self.main_window {
-            self.event
-                .send(WindowEvent::CursorMoved(ev.mouse_state.position.clone()))
-                .ok();
+            let mut cursor_position = self.cursor_position.lock().unwrap();
+            *cursor_position = ev.mouse_state.position;
         }
     }
 
@@ -78,12 +81,14 @@ impl wita::EventHandler for Window {
             self.event
                 .send(WindowEvent::LoadFile(ev.paths[0].to_path_buf()))
                 .ok();
+            trace!("main_window drop_files");
         }
     }
 
     fn resized(&mut self, ev: wita::event::Resized) {
         if ev.window == &self.main_window {
             self.event.send(WindowEvent::Resized(ev.size)).ok();
+            trace!("main_window resized");
         }
     }
 
@@ -100,7 +105,8 @@ impl wita::EventHandler for Window {
                     height: size.height,
                 },
                 shader: settings::Shader {
-                    ps: "ps_6_4".into(),
+                    ps: self.settings.shader.ps.clone(),
+                    ps_args: self.settings.shader.ps_args.clone(),
                 },
                 appearance: settings::Appearance {
                     clear_color: self.settings.appearance.clear_color,

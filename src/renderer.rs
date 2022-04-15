@@ -9,12 +9,14 @@ use windows::Win32::{
 #[repr(C)]
 struct Vertex {
     _position: [f32; 3],
+    _coord: [f32; 2],
 }
 
 impl Vertex {
-    const fn new(x: f32, y: f32, z: f32) -> Self {
+    const fn new(position: [f32; 3], coord: [f32; 2]) -> Self {
         Self {
-            _position: [x, y, z],
+            _position: position,
+            _coord: coord,
         }
     }
 }
@@ -32,12 +34,12 @@ impl PlaneBuffer {
     const fn new() -> Self {
         Self {
             vertices: [
-                Vertex::new(-1.0, -1.0, 0.0),
-                Vertex::new(-1.0, 1.0, 0.0),
-                Vertex::new(1.0, 1.0, 0.0),
-                Vertex::new(1.0, -1.0, 0.0),
+                Vertex::new([-1.0, 1.0, 0.0], [0.0, 1.0]),
+                Vertex::new([1.0, 1.0, 0.0], [1.0, 1.0]),
+                Vertex::new([-1.0, -1.0, 0.0], [0.0, 0.0]),
+                Vertex::new([1.0, -1.0, 0.0], [1.0, 0.0]),
             ],
-            indices: [0, 1, 2, 0, 2, 3],
+            indices: [0, 1, 2, 1, 3, 2],
         }
     }
 
@@ -259,15 +261,7 @@ impl SwapChain {
             rtv_heap.SetName("SwapChain::rtv_heap")?;
             let rtv_size =
                 device.GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_RTV) as usize;
-            let mut back_buffers = Vec::with_capacity(desc.BufferCount as _);
-            let mut handle = rtv_heap.GetCPUDescriptorHandleForHeapStart();
-            for i in 0..desc.BufferCount {
-                let buffer: ID3D12Resource = swap_chain.GetBuffer(i)?;
-                device.CreateRenderTargetView(&buffer, std::ptr::null(), handle);
-                buffer.SetName(format!("SwapChain::back_buffers[{}]", i))?;
-                back_buffers.push(buffer);
-                handle.ptr += rtv_size;
-            }
+            let back_buffers = Self::create_back_buffers(device, &swap_chain, &rtv_heap, rtv_size)?;
             Ok(Self {
                 cmd_queue,
                 swap_chain,
@@ -312,27 +306,40 @@ impl SwapChain {
         }
     }
 
-    fn resize(&mut self, size: wita::PhysicalSize<u32>) -> anyhow::Result<()> {
+    fn resize(
+        &mut self,
+        device: &ID3D12Device,
+        size: wita::PhysicalSize<u32>,
+    ) -> anyhow::Result<()> {
         self.back_buffers.clear();
         unsafe {
-            let device: ID3D12Device = {
-                let mut device = None;
-                self.rtv_heap
-                    .GetDevice(&mut device)
-                    .map(|_| device.unwrap())?
-            };
             self.swap_chain
                 .ResizeBuffers(0, size.width, size.height, DXGI_FORMAT_UNKNOWN, 0)?;
-            let desc = self.swap_chain.GetDesc1()?;
-            let mut handle = self.rtv_heap.GetCPUDescriptorHandleForHeapStart();
-            for i in 0..desc.BufferCount {
-                let buffer: ID3D12Resource = self.swap_chain.GetBuffer(i)?;
-                device.CreateRenderTargetView(&buffer, std::ptr::null(), handle);
-                self.back_buffers.push(buffer);
-                handle.ptr += self.rtv_size;
-            }
+            self.back_buffers =
+                Self::create_back_buffers(device, &self.swap_chain, &self.rtv_heap, self.rtv_size)?;
         }
         Ok(())
+    }
+
+    fn create_back_buffers(
+        device: &ID3D12Device,
+        swap_chain: &IDXGISwapChain4,
+        rtv_heap: &ID3D12DescriptorHeap,
+        rtv_size: usize,
+    ) -> anyhow::Result<Vec<ID3D12Resource>> {
+        unsafe {
+            let desc = swap_chain.GetDesc1()?;
+            let mut back_buffers = Vec::with_capacity(desc.BufferCount as _);
+            let mut handle = rtv_heap.GetCPUDescriptorHandleForHeapStart();
+            for i in 0..desc.BufferCount {
+                let buffer: ID3D12Resource = swap_chain.GetBuffer(i)?;
+                buffer.SetName(format!("SwapChain::back_buffers[{}]", i))?;
+                device.CreateRenderTargetView(&buffer, std::ptr::null(), handle);
+                back_buffers.push(buffer);
+                handle.ptr += rtv_size;
+            }
+            Ok(back_buffers)
+        }
     }
 }
 
@@ -360,7 +367,7 @@ impl PixelShader {
             let root_signature: ID3D12RootSignature = {
                 let params = [D3D12_ROOT_PARAMETER {
                     ParameterType: D3D12_ROOT_PARAMETER_TYPE_CBV,
-                    ShaderVisibility: D3D12_SHADER_VISIBILITY_PIXEL,
+                    ShaderVisibility: D3D12_SHADER_VISIBILITY_ALL,
                     Anonymous: D3D12_ROOT_PARAMETER_0 {
                         Descriptor: D3D12_ROOT_DESCRIPTOR {
                             ShaderRegister: 0,
@@ -373,7 +380,10 @@ impl PixelShader {
                     pParameters: params.as_ptr(),
                     NumStaticSamplers: 0,
                     pStaticSamplers: std::ptr::null(),
-                    Flags: D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT,
+                    Flags: D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT
+                        | D3D12_ROOT_SIGNATURE_FLAG_DENY_DOMAIN_SHADER_ROOT_ACCESS
+                        | D3D12_ROOT_SIGNATURE_FLAG_DENY_GEOMETRY_SHADER_ROOT_ACCESS
+                        | D3D12_ROOT_SIGNATURE_FLAG_DENY_HULL_SHADER_ROOT_ACCESS,
                 };
                 let mut blob: Option<ID3DBlob> = None;
                 let blob = D3D12SerializeRootSignature(
@@ -401,11 +411,8 @@ impl PixelShader {
                 None,
             )?;
             let plane = Plane::new(device)?;
-            let vs = compiler.compile_from_str(
-                include_str!("./shader/plane.hlsl"),
-                "vs_main",
-                "vs_6_4",
-            )?;
+            let vs =
+                compiler.compile_from_str(include_str!("./shader/plane.hlsl"), "main", "vs_6_4", &vec![])?;
             Ok(Self {
                 device: device.clone(),
                 root_signature,
@@ -418,15 +425,26 @@ impl PixelShader {
 
     fn create_pipeline(&self, ps: &hlsl::Blob) -> anyhow::Result<PixelShaderPipeline> {
         unsafe {
-            let input_elements = [D3D12_INPUT_ELEMENT_DESC {
-                SemanticName: PCSTR(b"POSITION\0".as_ptr()),
-                SemanticIndex: 0,
-                Format: DXGI_FORMAT_R32G32B32_FLOAT,
-                InputSlot: 0,
-                AlignedByteOffset: 0,
-                InputSlotClass: D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA,
-                InstanceDataStepRate: 0,
-            }];
+            let input_elements = [
+                D3D12_INPUT_ELEMENT_DESC {
+                    SemanticName: PCSTR(b"POSITION\0".as_ptr()),
+                    SemanticIndex: 0,
+                    Format: DXGI_FORMAT_R32G32B32_FLOAT,
+                    InputSlot: 0,
+                    AlignedByteOffset: 0,
+                    InputSlotClass: D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA,
+                    InstanceDataStepRate: 0,
+                },
+                D3D12_INPUT_ELEMENT_DESC {
+                    SemanticName: PCSTR(b"TEXCOORD\0".as_ptr()),
+                    SemanticIndex: 0,
+                    Format: DXGI_FORMAT_R32G32_FLOAT,
+                    InputSlot: 0,
+                    AlignedByteOffset: D3D12_APPEND_ALIGNED_ELEMENT,
+                    InputSlotClass: D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA,
+                    InstanceDataStepRate: 0,
+                },
+            ];
             let mut render_target_blend = [D3D12_RENDER_TARGET_BLEND_DESC::default(); 8];
             render_target_blend[0] = D3D12_RENDER_TARGET_BLEND_DESC {
                 BlendEnable: false.into(),
@@ -499,7 +517,7 @@ impl PixelShader {
 }
 
 pub struct Renderer {
-    _d3d12_device: ID3D12Device,
+    d3d12_device: ID3D12Device,
     swap_chain: SwapChain,
     pixel_shader: PixelShader,
     cmd_allocators: Vec<ID3D12CommandAllocator>,
@@ -539,7 +557,7 @@ impl Renderer {
             cmd_list.Close()?;
             let pixel_shader = PixelShader::new(&d3d12_device, compiler)?;
             Ok(Self {
-                _d3d12_device: d3d12_device,
+                d3d12_device,
                 swap_chain,
                 pixel_shader,
                 cmd_allocators,
@@ -627,11 +645,11 @@ impl Renderer {
 
     pub fn resize(&mut self, size: wita::PhysicalSize<u32>) -> anyhow::Result<()> {
         self.wait_all_signals();
-        self.swap_chain.resize(size)?;
+        self.swap_chain.resize(&self.d3d12_device, size)?;
         Ok(())
     }
 
-    fn wait_all_signals(&self) {
+    pub fn wait_all_signals(&self) {
         for signal in self.signals.borrow().iter() {
             if let Some(signal) = signal {
                 if !signal.is_completed() {

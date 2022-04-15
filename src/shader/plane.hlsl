@@ -2,11 +2,12 @@
 
 struct VSInput {
     float3 position: POSITION;
+    float2 coord: TEXCOORD0;
 };
 
-Input vs_main(VSInput input) {
+Input main(VSInput input) {
     Input output;
     output.position = float4(input.position, 1.0);
-    output.coord = float2((input.position.x + 1.0) / 2.0, (1.0 - input.position.y) / 2.0);
+    output.coord = input.coord * HLSLBox.resolution;
     return output;
 }

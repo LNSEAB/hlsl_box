@@ -15,6 +15,7 @@ pub struct Window {
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
 pub struct Shader {
     pub ps: String,
+    pub ps_args: Vec<String>,
 }
 
 #[derive(Debug, serde::Serialize, serde::Deserialize)]

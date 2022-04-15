@@ -20,6 +20,7 @@ pub struct Application {
     clear_color: [f32; 4],
     state: State,
     mouse: [f32; 2],
+    start_time: std::time::Instant,
 }
 
 impl Application {
@@ -43,13 +44,14 @@ impl Application {
             clear_color,
             state: State::Init,
             mouse: [0.0, 0.0],
+            start_time: std::time::Instant::now(),
         })
     }
 
     fn load_file(&mut self, path: &Path) -> anyhow::Result<()> {
         let blob = self
             .compiler
-            .compile_from_file(path, "main", &self.settings.shader.ps)?;
+            .compile_from_file(path, "main", &self.settings.shader.ps, &self.settings.shader.ps_args)?;
         let ps = self.renderer.create_pixel_shader_pipeline(&blob)?;
         let resolution = self.windows.main_window.inner_size();
         let parameters = Parameters {
@@ -57,7 +59,9 @@ impl Application {
             mouse: self.mouse.clone(),
             time: 0.0,
         };
+        self.renderer.wait_all_signals();
         self.state = State::Rendering(Rendering { parameters, ps });
+        self.start_time = std::time::Instant::now();
         Ok(())
     }
 
@@ -69,6 +73,7 @@ impl Application {
                     Err(e) => error!("{}", e),
                 },
                 Ok(WindowEvent::Resized(size)) => {
+                    trace!("WindowEvent::Resized");
                     if let Err(e) = self.renderer.resize(size) {
                         error!("{}", e);
                     }
@@ -76,18 +81,19 @@ impl Application {
                         r.parameters.resolution = [size.width as _, size.height as _];
                     }
                 }
-                Ok(WindowEvent::CursorMoved(pos)) => {
-                    self.mouse = [pos.x as _, pos.y as _];
-                    if let State::Rendering(r) = &mut self.state {
-                        r.parameters.mouse = self.mouse.clone();
-                    }
-                }
-                Ok(WindowEvent::Closed) => break,
                 _ => {}
             }
-            let ret = match &self.state {
+            if self.windows.main_window.is_closed() {
+                break;
+            }
+            let ret = match &mut self.state {
                 State::Init => self.renderer.render(&self.clear_color, None, None),
                 State::Rendering(r) => {
+                    r.parameters.mouse = {
+                        let cursor_position = self.windows.cursor_position.lock().unwrap();
+                        [cursor_position.x as _, cursor_position.y as _]
+                    };
+                    r.parameters.time = (std::time::Instant::now() - self.start_time).as_secs_f32();
                     self.renderer
                         .render(&self.clear_color, Some(&r.ps), Some(&r.parameters))
                 }

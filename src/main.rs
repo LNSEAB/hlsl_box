@@ -6,7 +6,7 @@ mod utility;
 mod window;
 
 use std::sync::Arc;
-use tracing::{error, info};
+use tracing::{error, info, trace};
 
 use application::Application;
 use renderer::*;

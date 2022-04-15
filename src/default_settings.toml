@@ -6,6 +6,7 @@ height = 768
 
 [shader]
 ps = "ps_6_4"
+ps_args = []
 
 [appearance]
 clear_color = [0.0, 0.0, 0.3]
