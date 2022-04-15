@@ -6,7 +6,7 @@ mod utility;
 mod window;
 
 use std::sync::Arc;
-use tracing::{error, info, trace};
+use tracing::{error, info, debug};
 
 use application::Application;
 use renderer::*;
@@ -25,7 +25,7 @@ fn logger() {
         .with_writer(Arc::new(File::create("hlsl_box.log").unwrap()))
         .with_ansi(false)
         .with_line_number(true)
-        .with_filter(LevelFilter::INFO);
+        .with_filter(LevelFilter::DEBUG);
     let console = tracing_subscriber::fmt::layer()
         .compact()
         .with_line_number(true)

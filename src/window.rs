@@ -63,6 +63,7 @@ impl wita::EventHandler for Window {
             if ctrl && released && o {
                 let dialog = ifdlg::FileOpenDialog::new();
                 if let Ok(Some(path)) = dialog.show::<PathBuf>() {
+                    debug!("open dialog: {}", path.display());
                     self.event.send(WindowEvent::LoadFile(path)).ok();
                 }
             }
@@ -81,14 +82,14 @@ impl wita::EventHandler for Window {
             self.event
                 .send(WindowEvent::LoadFile(ev.paths[0].to_path_buf()))
                 .ok();
-            trace!("main_window drop_files");
+            debug!("main_window drop_files");
         }
     }
 
     fn resized(&mut self, ev: wita::event::Resized) {
         if ev.window == &self.main_window {
             self.event.send(WindowEvent::Resized(ev.size)).ok();
-            trace!("main_window resized");
+            debug!("main_window resized");
         }
     }
 

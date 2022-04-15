@@ -73,7 +73,7 @@ impl Application {
                     Err(e) => error!("{}", e),
                 },
                 Ok(WindowEvent::Resized(size)) => {
-                    trace!("WindowEvent::Resized");
+                    debug!("WindowEvent::Resized");
                     if let Err(e) = self.renderer.resize(size) {
                         error!("{}", e);
                     }
@@ -99,7 +99,7 @@ impl Application {
                 }
             };
             if let Err(e) = ret {
-                error!("{}", e);
+                error!("render: {}", e);
             }
         }
         self.window_thread.take().unwrap().join().unwrap();
