@@ -72,7 +72,10 @@ impl Application {
         loop {
             match self.windows.event.try_recv() {
                 Ok(WindowEvent::LoadFile(path)) => match self.load_file(&path) {
-                    Ok(_) => info!("load file: {}", path.display()),
+                    Ok(_) => {
+                        self.windows.main_window.set_title(format!("HLSLBox {}", path.display()));
+                        info!("load file: {}", path.display());
+                    }
                     Err(e) => error!("{}", e),
                 },
                 Ok(WindowEvent::Resized(size)) => {

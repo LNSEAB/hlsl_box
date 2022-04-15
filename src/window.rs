@@ -25,7 +25,7 @@ struct Window {
 impl Window {
     fn new(settings: Arc<Settings>) -> anyhow::Result<(Self, WindowReceiver)> {
         let main_window = wita::Window::builder()
-            .title("HLSL Box")
+            .title("HLSLBox")
             .position(wita::ScreenPosition::new(
                 settings.window.x,
                 settings.window.y,
