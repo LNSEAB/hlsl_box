@@ -581,6 +581,7 @@ impl Renderer {
 
     pub fn render(
         &self,
+        interval: u32,
         clear_color: &[f32],
         ps: Option<&PixelShaderPipeline>,
         parameters: Option<&Parameters>,
@@ -642,7 +643,7 @@ impl Renderer {
             );
             self.cmd_list.Close()?;
         }
-        let signal = self.swap_chain.present(1, &[Some(self.cmd_list.cast()?)])?;
+        let signal = self.swap_chain.present(interval, &[Some(self.cmd_list.cast()?)])?;
         self.signals.borrow_mut()[index] = Some(signal);
         Ok(())
     }

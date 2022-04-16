@@ -113,7 +113,7 @@ impl Application {
                 break;
             }
             let ret = match &mut self.state {
-                State::Init => self.renderer.render(&self.clear_color, None, None),
+                State::Init => self.renderer.render(1, &self.clear_color, None, None),
                 State::Rendering(r) => {
                     r.parameters.mouse = {
                         let cursor_position = self.windows.cursor_position.lock().unwrap();
@@ -121,7 +121,7 @@ impl Application {
                     };
                     r.parameters.time = (std::time::Instant::now() - self.start_time).as_secs_f32();
                     self.renderer
-                        .render(&self.clear_color, Some(&r.ps), Some(&r.parameters))
+                        .render(1, &self.clear_color, Some(&r.ps), Some(&r.parameters))
                 }
             };
             if let Err(e) = ret {
