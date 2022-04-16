@@ -1,5 +1,5 @@
-#include "hlsl_box.hlsl"
-#include "snoise.hlsl"
+#include "hlsl_box.hlsli"
+#include "snoise.hlsli"
 
 float4 main(Input input): SV_Target {
     float2 st = normalized_position(input.coord);

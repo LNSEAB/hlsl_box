@@ -1,4 +1,4 @@
-#include "hlsl_box.hlsl"
+#include "hlsl_box.hlsli"
 
 float circle(float2 pos, float size) {
     return length(pos) < size ? 1.0 : 0.0;

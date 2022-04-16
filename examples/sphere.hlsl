@@ -1,4 +1,4 @@
-#include "hlsl_box.hlsl"
+#include "hlsl_box.hlsli"
 
 float dist(float3 pos, float size) {
     return length(pos) - size;

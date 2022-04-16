@@ -1,4 +1,4 @@
-#include "hlsl_box.hlsl"
+#include "hlsl_box.hlsli"
 
 struct VSInput {
     float3 position: POSITION;

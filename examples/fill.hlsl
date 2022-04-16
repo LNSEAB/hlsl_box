@@ -1,4 +1,4 @@
-#include "hlsl_box.hlsl"
+#include "hlsl_box.hlsli"
 
 float4 main(Input input): SV_TARGET {
     const float2 coord = input.coord / HLSLBox.resolution;
