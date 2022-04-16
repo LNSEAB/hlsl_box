@@ -13,7 +13,7 @@ float3 normal(float3 pos, float size) {
     ));
 }
 
-float4 main(Input input): SV_TARGET {
+float4 main(Input input): SV_Target {
     const float2 pos = normalized_position(input.coord);
     const float3 camera = float3(0.0, 0.0, 10.0);
     const float3 ray = normalize(float3(pos, 0.0) - camera);

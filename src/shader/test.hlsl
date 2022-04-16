@@ -4,7 +4,7 @@ struct VSInput {
 };
 
 struct VSOutput {
-	float4 position: SV_POSITION;
+	float4 position: SV_Position;
 	float2 uv: TEXCOORD0;
 };
 
@@ -18,6 +18,6 @@ VSOutput vs_main(VSInput input) {
 	return output;
 }
 
-float4 ps_main(VSOutput vs): SV_TARGET {
+float4 ps_main(VSOutput vs): SV_Target {
 	return tex.Sample(samp, vs.uv);
 }
