@@ -106,7 +106,8 @@ impl wita::EventHandler for Window {
                     height: size.height,
                 },
                 shader: settings::Shader {
-                    ps: self.settings.shader.ps.clone(),
+                    version: self.settings.shader.version.clone(),
+                    vs_args: self.settings.shader.vs_args.clone(),
                     ps_args: self.settings.shader.ps_args.clone(),
                 },
                 appearance: settings::Appearance {

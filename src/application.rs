@@ -27,10 +27,17 @@ pub struct Application {
 
 impl Application {
     pub fn new() -> anyhow::Result<Self> {
+        let args = std::env::args().collect::<Vec<_>>();
         let settings = Settings::load(SETTINGS_PATH)?;
         let compiler = hlsl::Compiler::new()?;
         let (windows, window_thread) = run_window_thread(settings.clone())?;
-        let renderer = Renderer::new(&windows.main_window, &compiler)?;
+        let debug_layer = args.iter().any(|arg| arg == "--debuglayer");
+        let renderer = Renderer::new(
+            &windows.main_window,
+            &compiler,
+            &settings.shader.version,
+            debug_layer,
+        )?;
         let clear_color = [
             settings.appearance.clear_color[0],
             settings.appearance.clear_color[1],
@@ -56,7 +63,7 @@ impl Application {
         let blob = self.compiler.compile_from_file(
             path,
             "main",
-            &self.settings.shader.ps,
+            &format!("ps_{}", &self.settings.shader.version),
             &self.settings.shader.ps_args,
         )?;
         let ps = self.renderer.create_pixel_shader_pipeline(&blob)?;

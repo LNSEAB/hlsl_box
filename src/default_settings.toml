@@ -5,7 +5,8 @@ width = 1024
 height = 768
 
 [shader]
-ps = "ps_6_4"
+version = "6_4"
+vs_args = []
 ps_args = []
 
 [appearance]

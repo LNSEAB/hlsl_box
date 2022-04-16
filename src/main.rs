@@ -44,7 +44,8 @@ fn main() {
     }
     logger();
     info!("start");
-    let mut app = Application::new().unwrap();
-    app.run().unwrap();
+    if let Err(e) = Application::new().and_then(|mut app| app.run()) {
+        error!("{}", e);
+    }
     info!("end");
 }

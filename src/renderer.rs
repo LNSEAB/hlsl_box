@@ -362,7 +362,7 @@ struct PixelShader {
 }
 
 impl PixelShader {
-    fn new(device: &ID3D12Device, compiler: &hlsl::Compiler) -> anyhow::Result<Self> {
+    fn new(device: &ID3D12Device, compiler: &hlsl::Compiler, vs: &str) -> anyhow::Result<Self> {
         unsafe {
             let root_signature: ID3D12RootSignature = {
                 let params = [D3D12_ROOT_PARAMETER {
@@ -414,7 +414,7 @@ impl PixelShader {
             let vs = compiler.compile_from_str(
                 include_str!("./shader/plane.hlsl"),
                 "main",
-                "vs_6_4",
+                vs,
                 &vec![],
             )?;
             Ok(Self {
@@ -531,11 +531,18 @@ pub struct Renderer {
 }
 
 impl Renderer {
-    pub fn new(window: &wita::Window, compiler: &hlsl::Compiler) -> anyhow::Result<Self> {
-        unsafe {
-            let mut debug: Option<ID3D12Debug> = None;
-            let debug = D3D12GetDebugInterface(&mut debug).map(|_| debug.unwrap())?;
-            debug.EnableDebugLayer();
+    pub fn new(
+        window: &wita::Window,
+        compiler: &hlsl::Compiler,
+        shader_version: &str,
+        debug_layer: bool,
+    ) -> anyhow::Result<Self> {
+        if debug_layer {
+            unsafe {
+                let mut debug: Option<ID3D12Debug> = None;
+                let debug = D3D12GetDebugInterface(&mut debug).map(|_| debug.unwrap())?;
+                debug.EnableDebugLayer();
+            }
         }
         unsafe {
             let d3d12_device: ID3D12Device = {
@@ -559,7 +566,7 @@ impl Renderer {
             )?;
             cmd_list.SetName("Renderer::cmd_list")?;
             cmd_list.Close()?;
-            let pixel_shader = PixelShader::new(&d3d12_device, compiler)?;
+            let pixel_shader = PixelShader::new(&d3d12_device, compiler, &format!("vs_{}", shader_version))?;
             Ok(Self {
                 d3d12_device,
                 swap_chain,
@@ -627,8 +634,8 @@ impl Renderer {
                 false,
                 std::ptr::null(),
             );
-            if let Some(ps) = ps.as_ref() {
-                if let Some(parameters) = parameters.as_ref() {
+            if let Some(ps) = ps {
+                if let Some(parameters) = parameters {
                     self.pixel_shader.execute(&self.cmd_list, ps, parameters);
                 }
             }
@@ -643,7 +650,9 @@ impl Renderer {
             );
             self.cmd_list.Close()?;
         }
-        let signal = self.swap_chain.present(interval, &[Some(self.cmd_list.cast()?)])?;
+        let signal = self
+            .swap_chain
+            .present(interval, &[Some(self.cmd_list.cast()?)])?;
         self.signals.borrow_mut()[index] = Some(signal);
         Ok(())
     }
