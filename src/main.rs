@@ -8,7 +8,7 @@ mod settings;
 mod utility;
 mod window;
 
-use std::sync::{Arc, mpsc};
+use std::sync::{mpsc, Arc};
 use tracing::{debug, error, info};
 
 use application::Application;
@@ -55,7 +55,8 @@ fn main() {
         let th = std::thread::spawn(move || {
             info!("rendering thread start");
             let _coinit = coinit::init(coinit::MULTITHREADED | coinit::DISABLE_OLE1DDE).unwrap();
-            if let Err(e) = Application::new(th_settings, window_receiver).and_then(|mut app| app.run()) {
+            let app = Application::new(th_settings, window_receiver).and_then(|mut app| app.run());
+            if let Err(e) = app {
                 error!("{}", e);
             }
             info!("rendering thread end");

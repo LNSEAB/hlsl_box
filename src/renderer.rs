@@ -307,10 +307,7 @@ impl SwapChain {
         }
     }
 
-    fn present(
-        &self,
-        interval: u32,
-    ) -> anyhow::Result<Signal> {
+    fn present(&self, interval: u32) -> anyhow::Result<Signal> {
         unsafe {
             self.swap_chain.Present(interval, 0)?;
             let value = self.cmd_queue.value.get();
@@ -565,14 +562,17 @@ impl Ui {
             cmd_queue.queue.SetName("Ui::cmd_queue::queue")?;
             let context = mltg::Context::new(mltg::Direct3D12::new(device, &cmd_queue.queue)?)?;
             context.set_dpi(window.dpi() as _);
-            let desc_heap: ID3D12DescriptorHeap = device.CreateDescriptorHeap(&D3D12_DESCRIPTOR_HEAP_DESC {
-                Type: D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV,
-                NumDescriptors: count as _,
-                Flags: D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE,
-                ..Default::default()
-            })?;
+            let desc_heap: ID3D12DescriptorHeap =
+                device.CreateDescriptorHeap(&D3D12_DESCRIPTOR_HEAP_DESC {
+                    Type: D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV,
+                    NumDescriptors: count as _,
+                    Flags: D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE,
+                    ..Default::default()
+                })?;
             desc_heap.SetName("Ui::desc_heap")?;
-            let desc_size = device.GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV) as usize;
+            let desc_size = device
+                .GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV)
+                as usize;
             let mut buffers = Vec::with_capacity(count);
             let mut handle = desc_heap.GetCPUDescriptorHandleForHeapStart();
             for i in 0..count {
@@ -594,7 +594,7 @@ impl Ui {
                     Format: DXGI_FORMAT_R8G8B8A8_UNORM,
                     Shader4ComponentMapping: D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING,
                     Anonymous: D3D12_SHADER_RESOURCE_VIEW_DESC_0 {
-                        Texture2D: D3D12_TEX2D_SRV { 
+                        Texture2D: D3D12_TEX2D_SRV {
                             MipLevels: 1,
                             ..Default::default()
                         },
@@ -607,15 +607,13 @@ impl Ui {
             }
             let plane = Plane::new(device, PlaneOrigin::LeftTop)?;
             let root_signature: ID3D12RootSignature = {
-                let ranges = [
-                    D3D12_DESCRIPTOR_RANGE {
-                        RangeType: D3D12_DESCRIPTOR_RANGE_TYPE_SRV,
-                        NumDescriptors: 1,
-                        BaseShaderRegister: 0,
-                        RegisterSpace: 0,
-                        OffsetInDescriptorsFromTableStart: D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND,
-                    },
-                ];
+                let ranges = [D3D12_DESCRIPTOR_RANGE {
+                    RangeType: D3D12_DESCRIPTOR_RANGE_TYPE_SRV,
+                    NumDescriptors: 1,
+                    BaseShaderRegister: 0,
+                    RegisterSpace: 0,
+                    OffsetInDescriptorsFromTableStart: D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND,
+                }];
                 let parameters = [D3D12_ROOT_PARAMETER {
                     ParameterType: D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE,
                     ShaderVisibility: D3D12_SHADER_VISIBILITY_PIXEL,
@@ -803,7 +801,7 @@ impl Ui {
     }
 
     fn wait_all_signals(&self) {
-         for signal in self.signals.borrow().iter() {
+        for signal in self.signals.borrow().iter() {
             if let Some(signal) = signal {
                 if !signal.is_completed() {
                     signal.set_event(&self.wait_event).unwrap();
@@ -868,7 +866,13 @@ impl Renderer {
             }
             let pixel_shader =
                 PixelShader::new(&d3d12_device, compiler, &format!("vs_{}", shader_version))?;
-            let ui = Ui::new(&d3d12_device, BUFFER_COUNT, window, compiler, shader_version)?;
+            let ui = Ui::new(
+                &d3d12_device,
+                BUFFER_COUNT,
+                window,
+                compiler,
+                shader_version,
+            )?;
             Ok(Self {
                 d3d12_device,
                 swap_chain,
@@ -909,7 +913,6 @@ impl Renderer {
                 self.wait_event.wait();
             }
         }
-        let ui_signal = self.ui.render(index, r)?;
         let cmd_allocators = &self.cmd_allocators[index * 2..=index * 2 + 1];
         unsafe {
             let cmd_list = &self.cmd_lists[0];
@@ -924,8 +927,7 @@ impl Renderer {
                     state_after: D3D12_RESOURCE_STATE_RENDER_TARGET,
                 }],
             );
-            cmd_list
-                .ClearRenderTargetView(handle, clear_color.as_ptr(), &[]);
+            cmd_list.ClearRenderTargetView(handle, clear_color.as_ptr(), &[]);
             cmd_list.RSSetViewports(&[D3D12_VIEWPORT {
                 Width: swap_chain_desc.Width as _,
                 Height: swap_chain_desc.Height as _,
@@ -938,19 +940,16 @@ impl Renderer {
                 ..Default::default()
             }]);
             let rtvs = [handle.clone()];
-            cmd_list.OMSetRenderTargets(
-                rtvs.len() as _,
-                rtvs.as_ptr(),
-                false,
-                std::ptr::null(),
-            );
+            cmd_list.OMSetRenderTargets(rtvs.len() as _, rtvs.as_ptr(), false, std::ptr::null());
             if let Some(ps) = ps {
                 if let Some(parameters) = parameters {
                     self.pixel_shader.execute(&cmd_list, ps, parameters);
                 }
             }
             cmd_list.Close()?;
-            self.swap_chain.cmd_queue.execute_command_lists(&[Some(cmd_list.cast().unwrap())])?;
+            self.swap_chain
+                .cmd_queue
+                .execute_command_lists(&[Some(cmd_list.cast().unwrap())])?;
         }
         unsafe {
             let cmd_list = &self.cmd_lists[1];
@@ -968,12 +967,7 @@ impl Renderer {
                 ..Default::default()
             }]);
             let rtvs = [handle.clone()];
-            cmd_list.OMSetRenderTargets(
-                rtvs.len() as _,
-                rtvs.as_ptr(),
-                false,
-                std::ptr::null(),
-            );
+            cmd_list.OMSetRenderTargets(rtvs.len() as _, rtvs.as_ptr(), false, std::ptr::null());
             self.ui.copy(index, cmd_list);
             transition_barriers(
                 cmd_list,
@@ -985,12 +979,13 @@ impl Renderer {
                 }],
             );
             cmd_list.Close()?;
+            let ui_signal = self.ui.render(index, r)?;
             self.swap_chain.cmd_queue.wait(&ui_signal)?;
-            self.swap_chain.cmd_queue.execute_command_lists(&[Some(cmd_list.cast().unwrap())])?;
+            self.swap_chain
+                .cmd_queue
+                .execute_command_lists(&[Some(cmd_list.cast().unwrap())])?;
         }
-        let signal = self
-            .swap_chain
-            .present(interval)?;
+        let signal = self.swap_chain.present(interval)?;
         self.signals.borrow_mut()[index] = Some(signal);
         Ok(())
     }

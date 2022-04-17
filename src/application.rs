@@ -19,7 +19,10 @@ struct Empty {
 
 impl UiRender for Empty {
     fn render(&self, cmd: &mltg::DrawCommand) {
-        cmd.fill(&mltg::Rect::new([100.0, 100.0], [100.0, 100.0]), &self.white);
+        cmd.fill(
+            &mltg::Rect::new([100.0, 100.0], [100.0, 100.0]),
+            &self.white,
+        );
         cmd.draw_text("test", &self.text_format, &self.white, [0.0, 0.0]);
     }
 }
@@ -27,7 +30,7 @@ impl UiRender for Empty {
 pub struct Application {
     settings: Arc<Settings>,
     compiler: hlsl::Compiler,
-    windows: WindowReceiver,
+    window_receiver: WindowReceiver,
     renderer: Renderer,
     clear_color: [f32; 4],
     state: State,
@@ -38,12 +41,12 @@ pub struct Application {
 }
 
 impl Application {
-    pub fn new(settings: Arc<Settings>, windows: WindowReceiver) -> anyhow::Result<Self> {
+    pub fn new(settings: Arc<Settings>, window_recevier: WindowReceiver) -> anyhow::Result<Self> {
         let args = std::env::args().collect::<Vec<_>>();
         let compiler = hlsl::Compiler::new()?;
         let debug_layer = args.iter().any(|arg| arg == "--debuglayer");
         let renderer = Renderer::new(
-            &windows.main_window,
+            &window_recevier.main_window,
             &compiler,
             &settings.shader.version,
             debug_layer,
@@ -56,12 +59,16 @@ impl Application {
         ];
         let factory = renderer.mltg_factory();
         let empty = Empty {
-            text_format: factory.create_text_format(mltg::Font::System("Yu Gothic"), mltg::FontPoint(14.0), None)?,
+            text_format: factory.create_text_format(
+                mltg::Font::System("Yu Gothic"),
+                mltg::FontPoint(14.0),
+                None,
+            )?,
             white: factory.create_solid_color_brush([1.0, 1.0, 1.0, 1.0])?,
         };
         Ok(Self {
             settings,
-            windows,
+            window_receiver: window_recevier,
             compiler,
             renderer,
             clear_color,
@@ -82,7 +89,7 @@ impl Application {
             &self.settings.shader.ps_args,
         )?;
         let ps = self.renderer.create_pixel_shader_pipeline(&blob)?;
-        let resolution = self.windows.main_window.inner_size();
+        let resolution = self.window_receiver.main_window.inner_size();
         let parameters = Parameters {
             resolution: [resolution.width as _, resolution.height as _],
             mouse: self.mouse.clone(),
@@ -96,7 +103,7 @@ impl Application {
         });
         self.start_time = std::time::Instant::now();
         self.dir = Some(DirMonitor::new(path.parent().unwrap())?);
-        self.windows
+        self.window_receiver
             .main_window
             .set_title(format!("HLSLBox {}", path.display()));
         info!("load file: {}", path.display());
@@ -105,7 +112,7 @@ impl Application {
 
     pub fn run(&mut self) -> anyhow::Result<()> {
         loop {
-            match self.windows.event.try_recv() {
+            match self.window_receiver.event.try_recv() {
                 Ok(WindowEvent::LoadFile(path)) => {
                     if let Err(e) = self.load_file(&path) {
                         error!("{}", e);
@@ -131,19 +138,26 @@ impl Application {
                     }
                 }
             }
-            if self.windows.main_window.is_closed() {
+            if self.window_receiver.main_window.is_closed() {
                 break;
             }
             let ret = match &mut self.state {
-                State::Init => self.renderer.render(1, &self.clear_color, None, None, &self.empty),
+                State::Init => self
+                    .renderer
+                    .render(1, &self.clear_color, None, None, &self.empty),
                 State::Rendering(r) => {
                     r.parameters.mouse = {
-                        let cursor_position = self.windows.cursor_position.lock().unwrap();
+                        let cursor_position = self.window_receiver.cursor_position.lock().unwrap();
                         [cursor_position.x as _, cursor_position.y as _]
                     };
                     r.parameters.time = (std::time::Instant::now() - self.start_time).as_secs_f32();
-                    self.renderer
-                        .render(1, &self.clear_color, Some(&r.ps), Some(&r.parameters), &self.empty)
+                    self.renderer.render(
+                        1,
+                        &self.clear_color,
+                        Some(&r.ps),
+                        Some(&r.parameters),
+                        &self.empty,
+                    )
                 }
             };
             if let Err(e) = ret {
