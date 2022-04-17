@@ -15,7 +15,7 @@ pub struct WindowReceiver {
     pub cursor_position: Arc<Mutex<wita::PhysicalPosition<i32>>>,
 }
 
-struct Window {
+pub struct Window {
     main_window: wita::Window,
     event: mpsc::Sender<WindowEvent>,
     settings: Arc<Settings>,
@@ -23,7 +23,7 @@ struct Window {
 }
 
 impl Window {
-    fn new(settings: Arc<Settings>) -> anyhow::Result<(Self, WindowReceiver)> {
+    pub fn new(settings: Arc<Settings>) -> anyhow::Result<(Self, WindowReceiver)> {
         let main_window = wita::Window::builder()
             .title("HLSLBox")
             .position(wita::ScreenPosition::new(
@@ -119,22 +119,4 @@ impl wita::EventHandler for Window {
             }
         }
     }
-}
-
-pub fn run_window_thread(
-    settings: Arc<Settings>,
-) -> anyhow::Result<(WindowReceiver, std::thread::JoinHandle<()>)> {
-    let _coinit = coinit::init(coinit::APARTMENTTHREADED | coinit::DISABLE_OLE1DDE)?;
-    let (window_tx, window_rx) = std::sync::mpsc::channel::<WindowReceiver>();
-    let th = std::thread::spawn(move || {
-        info!("spawn window thread");
-        wita::run(wita::RunType::Wait, move || -> anyhow::Result<Window> {
-            let (main_window, rx) = Window::new(settings)?;
-            window_tx.send(rx).ok();
-            Ok(main_window)
-        })
-        .unwrap();
-        info!("end window thread");
-    });
-    Ok((window_rx.recv().unwrap(), th))
 }

@@ -1,3 +1,5 @@
+#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+
 mod application;
 mod hlsl;
 mod monitor;
@@ -6,7 +8,7 @@ mod settings;
 mod utility;
 mod window;
 
-use std::sync::Arc;
+use std::sync::{Arc, mpsc};
 use tracing::{debug, error, info};
 
 use application::Application;
@@ -43,9 +45,27 @@ fn main() {
         libc::setlocale(libc::LC_ALL, b"\0".as_ptr() as _);
     }
     logger();
+    let _coinit = coinit::init(coinit::APARTMENTTHREADED | coinit::DISABLE_OLE1DDE).unwrap();
+    let (th_tx, th_rx) = mpsc::channel();
     info!("start");
-    if let Err(e) = Application::new().and_then(|mut app| app.run()) {
+    let f = move || -> anyhow::Result<Window> {
+        let settings = Settings::load(SETTINGS_PATH)?;
+        let (window, window_receiver) = Window::new(settings.clone())?;
+        let th_settings = settings.clone();
+        let th = std::thread::spawn(move || {
+            info!("rendering thread start");
+            let _coinit = coinit::init(coinit::MULTITHREADED | coinit::DISABLE_OLE1DDE).unwrap();
+            if let Err(e) = Application::new(th_settings, window_receiver).and_then(|mut app| app.run()) {
+                error!("{}", e);
+            }
+            info!("rendering thread end");
+        });
+        th_tx.send(th).ok();
+        Ok(window)
+    };
+    if let Err(e) = wita::run(wita::RunType::Wait, f) {
         error!("{}", e);
     }
+    th_rx.recv().unwrap().join().unwrap();
     info!("end");
 }

@@ -200,3 +200,69 @@ impl<'a> From<&'a Buffer> for &'a ID3D12Resource {
         &src.0
     }
 }
+
+#[derive(Clone, PartialEq, Eq)]
+#[repr(transparent)]
+pub struct Texture2D(ID3D12Resource);
+
+impl Texture2D {
+    pub fn new(
+        name: &str,
+        device: &ID3D12Device,
+        width: u64,
+        height: u32,
+        init_state: D3D12_RESOURCE_STATES,
+        heap_flags: Option<D3D12_HEAP_FLAGS>,
+        flags: Option<D3D12_RESOURCE_FLAGS>,
+    ) -> anyhow::Result<Self> {
+        let heap_props = HeapProperties::new(D3D12_HEAP_TYPE_DEFAULT);
+        let desc = D3D12_RESOURCE_DESC {
+            Dimension: D3D12_RESOURCE_DIMENSION_TEXTURE2D,
+            Width: width,
+            Height: height,
+            DepthOrArraySize: 1,
+            MipLevels: 1,
+            Format: DXGI_FORMAT_R8G8B8A8_UNORM,
+            Layout: D3D12_TEXTURE_LAYOUT_UNKNOWN,
+            Flags: flags.unwrap_or(D3D12_RESOURCE_FLAG_NONE),
+            SampleDesc: SampleDesc::default().into(),
+            ..Default::default()
+        };
+        unsafe {
+            let mut resource: Option<ID3D12Resource> = None;
+            let resource = device
+                .CreateCommittedResource(
+                    &heap_props.into(),
+                    heap_flags.unwrap_or(D3D12_HEAP_FLAG_NONE),
+                    &desc,
+                    init_state,
+                    &D3D12_CLEAR_VALUE {
+                        Format: desc.Format,
+                        Anonymous: D3D12_CLEAR_VALUE_0 {
+                            Color: [0.0, 0.0, 0.0, 0.0],
+                        },
+                    },
+                    &mut resource,
+                )
+                .map(|_| resource.unwrap())?;
+            resource.SetName(name)?;
+            Ok(Self(resource))
+        }
+    }
+
+    pub fn handle(&self) -> &ID3D12Resource {
+        &self.0
+    }
+}
+
+impl From<Texture2D> for ID3D12Resource {
+    fn from(src: Texture2D) -> Self {
+        src.0
+    }
+}
+
+impl<'a> From<&'a Texture2D> for &'a ID3D12Resource {
+    fn from(src: &'a Texture2D) -> Self {
+        &src.0
+    }
+}

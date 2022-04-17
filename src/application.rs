@@ -12,25 +12,35 @@ enum State {
     Rendering(Rendering),
 }
 
+struct Empty {
+    text_format: mltg::TextFormat,
+    white: mltg::Brush,
+}
+
+impl UiRender for Empty {
+    fn render(&self, cmd: &mltg::DrawCommand) {
+        cmd.fill(&mltg::Rect::new([100.0, 100.0], [100.0, 100.0]), &self.white);
+        cmd.draw_text("test", &self.text_format, &self.white, [0.0, 0.0]);
+    }
+}
+
 pub struct Application {
     settings: Arc<Settings>,
     compiler: hlsl::Compiler,
     windows: WindowReceiver,
-    window_thread: Option<std::thread::JoinHandle<()>>,
     renderer: Renderer,
     clear_color: [f32; 4],
     state: State,
     mouse: [f32; 2],
     start_time: std::time::Instant,
     dir: Option<DirMonitor>,
+    empty: Empty,
 }
 
 impl Application {
-    pub fn new() -> anyhow::Result<Self> {
+    pub fn new(settings: Arc<Settings>, windows: WindowReceiver) -> anyhow::Result<Self> {
         let args = std::env::args().collect::<Vec<_>>();
-        let settings = Settings::load(SETTINGS_PATH)?;
         let compiler = hlsl::Compiler::new()?;
-        let (windows, window_thread) = run_window_thread(settings.clone())?;
         let debug_layer = args.iter().any(|arg| arg == "--debuglayer");
         let renderer = Renderer::new(
             &windows.main_window,
@@ -44,10 +54,14 @@ impl Application {
             settings.appearance.clear_color[2],
             0.0,
         ];
+        let factory = renderer.mltg_factory();
+        let empty = Empty {
+            text_format: factory.create_text_format(mltg::Font::System("Yu Gothic"), mltg::FontPoint(14.0), None)?,
+            white: factory.create_solid_color_brush([1.0, 1.0, 1.0, 1.0])?,
+        };
         Ok(Self {
             settings,
             windows,
-            window_thread: Some(window_thread),
             compiler,
             renderer,
             clear_color,
@@ -55,6 +69,7 @@ impl Application {
             mouse: [0.0, 0.0],
             start_time: std::time::Instant::now(),
             dir: None,
+            empty,
         })
     }
 
@@ -120,7 +135,7 @@ impl Application {
                 break;
             }
             let ret = match &mut self.state {
-                State::Init => self.renderer.render(1, &self.clear_color, None, None),
+                State::Init => self.renderer.render(1, &self.clear_color, None, None, &self.empty),
                 State::Rendering(r) => {
                     r.parameters.mouse = {
                         let cursor_position = self.windows.cursor_position.lock().unwrap();
@@ -128,14 +143,13 @@ impl Application {
                     };
                     r.parameters.time = (std::time::Instant::now() - self.start_time).as_secs_f32();
                     self.renderer
-                        .render(1, &self.clear_color, Some(&r.ps), Some(&r.parameters))
+                        .render(1, &self.clear_color, Some(&r.ps), Some(&r.parameters), &self.empty)
                 }
             };
             if let Err(e) = ret {
                 error!("render: {}", e);
             }
         }
-        self.window_thread.take().unwrap().join().unwrap();
         Ok(())
     }
 }
