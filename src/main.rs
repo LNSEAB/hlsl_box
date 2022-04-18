@@ -49,17 +49,17 @@ fn main() {
     let (th_tx, th_rx) = mpsc::channel();
     info!("start");
     let f = move || -> anyhow::Result<Window> {
-        let settings = Settings::load(SETTINGS_PATH)?;
+        let settings = Arc::new(Settings::load(SETTINGS_PATH)?);
         let (window, window_receiver) = Window::new(settings.clone())?;
         let th_settings = settings.clone();
         let th = std::thread::spawn(move || {
-            info!("rendering thread start");
+            info!("start rendering thread");
             let _coinit = coinit::init(coinit::MULTITHREADED | coinit::DISABLE_OLE1DDE).unwrap();
             let app = Application::new(th_settings, window_receiver).and_then(|mut app| app.run());
             if let Err(e) = app {
-                error!("{}", e);
+                error!("{}\n{}", e, e.backtrace());
             }
-            info!("rendering thread end");
+            info!("end rendering thread");
         });
         th_tx.send(th).ok();
         Ok(window)

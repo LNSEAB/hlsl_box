@@ -186,13 +186,13 @@ struct CommandQueue {
 }
 
 impl CommandQueue {
-    fn new(d3d12_device: &ID3D12Device, t: D3D12_COMMAND_LIST_TYPE) -> anyhow::Result<Self> {
+    fn new(device: &ID3D12Device, t: D3D12_COMMAND_LIST_TYPE) -> anyhow::Result<Self> {
         unsafe {
-            let queue = d3d12_device.CreateCommandQueue(&D3D12_COMMAND_QUEUE_DESC {
+            let queue = device.CreateCommandQueue(&D3D12_COMMAND_QUEUE_DESC {
                 Type: t,
                 ..Default::default()
             })?;
-            let fence = d3d12_device.CreateFence(0, D3D12_FENCE_FLAG_NONE)?;
+            let fence = device.CreateFence(0, D3D12_FENCE_FLAG_NONE)?;
             Ok(Self {
                 queue,
                 fence,
@@ -246,7 +246,7 @@ struct SwapChain {
 impl SwapChain {
     fn new(device: &ID3D12Device, window: &wita::Window, count: usize) -> anyhow::Result<Self> {
         unsafe {
-            let cmd_queue = CommandQueue::new(&device, D3D12_COMMAND_LIST_TYPE_DIRECT)?;
+            let cmd_queue = CommandQueue::new(device, D3D12_COMMAND_LIST_TYPE_DIRECT)?;
             let window_size = window.inner_size();
             let dxgi_factory: IDXGIFactory5 = CreateDXGIFactory1()?;
             let desc = DXGI_SWAP_CHAIN_DESC1 {
@@ -376,7 +376,11 @@ struct PixelShader {
 }
 
 impl PixelShader {
-    fn new(device: &ID3D12Device, compiler: &hlsl::Compiler, vs: &str) -> anyhow::Result<Self> {
+    fn new(
+        device: &ID3D12Device,
+        compiler: &hlsl::Compiler,
+        shader_model: hlsl::ShaderModel,
+    ) -> anyhow::Result<Self> {
         unsafe {
             let root_signature: ID3D12RootSignature = {
                 let params = [D3D12_ROOT_PARAMETER {
@@ -428,7 +432,7 @@ impl PixelShader {
             let vs = compiler.compile_from_str(
                 include_str!("./shader/plane.hlsl"),
                 "main",
-                vs,
+                hlsl::Target::VS(shader_model),
                 &vec![],
             )?;
             Ok(Self {
@@ -554,7 +558,7 @@ impl Ui {
         count: usize,
         window: &wita::Window,
         compiler: &hlsl::Compiler,
-        shader_version: &str,
+        shader_model: hlsl::ShaderModel,
     ) -> anyhow::Result<Self> {
         unsafe {
             let size = window.inner_size();
@@ -668,13 +672,13 @@ impl Ui {
                 let vs = compiler.compile_from_str(
                     shader,
                     "vs_main",
-                    &format!("vs_{}", shader_version),
+                    hlsl::Target::VS(shader_model),
                     &vec![],
                 )?;
                 let ps = compiler.compile_from_str(
                     shader,
                     "ps_main",
-                    &format!("ps_{}", shader_version),
+                    hlsl::Target::PS(shader_model),
                     &vec![],
                 )?;
                 let input_elements = [
@@ -825,26 +829,14 @@ pub struct Renderer {
 
 impl Renderer {
     pub fn new(
+        d3d12_device: &ID3D12Device,
         window: &wita::Window,
         compiler: &hlsl::Compiler,
-        shader_version: &str,
-        debug_layer: bool,
+        shader_model: hlsl::ShaderModel,
     ) -> anyhow::Result<Self> {
-        if debug_layer {
-            unsafe {
-                let mut debug: Option<ID3D12Debug> = None;
-                let debug = D3D12GetDebugInterface(&mut debug).map(|_| debug.unwrap())?;
-                debug.EnableDebugLayer();
-            }
-        }
         const BUFFER_COUNT: usize = 2;
         unsafe {
-            let d3d12_device: ID3D12Device = {
-                let mut device = None;
-                D3D12CreateDevice(None, D3D_FEATURE_LEVEL_12_1, &mut device)
-                    .map(|_| device.unwrap())?
-            };
-            let swap_chain = SwapChain::new(&d3d12_device, window, BUFFER_COUNT)?;
+            let swap_chain = SwapChain::new(d3d12_device, window, BUFFER_COUNT)?;
             let mut cmd_allocators = Vec::with_capacity(4);
             for i in 0..BUFFER_COUNT * 2 {
                 let cmd_allocator: ID3D12CommandAllocator =
@@ -864,17 +856,10 @@ impl Renderer {
                 cmd_list.Close()?;
                 cmd_lists.push(cmd_list);
             }
-            let pixel_shader =
-                PixelShader::new(&d3d12_device, compiler, &format!("vs_{}", shader_version))?;
-            let ui = Ui::new(
-                &d3d12_device,
-                BUFFER_COUNT,
-                window,
-                compiler,
-                shader_version,
-            )?;
+            let pixel_shader = PixelShader::new(&d3d12_device, compiler, shader_model)?;
+            let ui = Ui::new(&d3d12_device, BUFFER_COUNT, window, compiler, shader_model)?;
             Ok(Self {
-                d3d12_device,
+                d3d12_device: d3d12_device.clone(),
                 swap_chain,
                 pixel_shader,
                 cmd_allocators,

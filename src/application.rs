@@ -1,5 +1,6 @@
 use crate::*;
 use std::path::{Path, PathBuf};
+use windows::Win32::Graphics::{Direct3D::*, Direct3D12::*};
 
 struct Rendering {
     path: PathBuf,
@@ -29,6 +30,8 @@ impl UiRender for Empty {
 
 pub struct Application {
     settings: Arc<Settings>,
+    _d3d12_device: ID3D12Device,
+    shader_model: hlsl::ShaderModel,
     compiler: hlsl::Compiler,
     window_receiver: WindowReceiver,
     renderer: Renderer,
@@ -41,15 +44,29 @@ pub struct Application {
 }
 
 impl Application {
-    pub fn new(settings: Arc<Settings>, window_recevier: WindowReceiver) -> anyhow::Result<Self> {
+    pub fn new(settings: Arc<Settings>, window_receiver: WindowReceiver) -> anyhow::Result<Self> {
         let args = std::env::args().collect::<Vec<_>>();
         let compiler = hlsl::Compiler::new()?;
         let debug_layer = args.iter().any(|arg| arg == "--debuglayer");
+        if debug_layer {
+            unsafe {
+                let mut debug: Option<ID3D12Debug> = None;
+                let debug = D3D12GetDebugInterface(&mut debug).map(|_| debug.unwrap())?;
+                debug.EnableDebugLayer();
+            }
+            info!("enable debug layer");
+        }
+        let d3d12_device: ID3D12Device = unsafe {
+            let mut device = None;
+            D3D12CreateDevice(None, D3D_FEATURE_LEVEL_12_1, &mut device).map(|_| device.unwrap())?
+        };
+        let shader_model = hlsl::ShaderModel::new(&d3d12_device, settings.shader.version.as_ref())?;
+        info!("shader_model: {}", shader_model);
         let renderer = Renderer::new(
-            &window_recevier.main_window,
+            &d3d12_device,
+            &window_receiver.main_window,
             &compiler,
-            &settings.shader.version,
-            debug_layer,
+            shader_model,
         )?;
         let clear_color = [
             settings.appearance.clear_color[0],
@@ -67,8 +84,10 @@ impl Application {
             white: factory.create_solid_color_brush([1.0, 1.0, 1.0, 1.0])?,
         };
         Ok(Self {
+            _d3d12_device: d3d12_device,
             settings,
-            window_receiver: window_recevier,
+            window_receiver,
+            shader_model,
             compiler,
             renderer,
             clear_color,
@@ -85,7 +104,7 @@ impl Application {
         let blob = self.compiler.compile_from_file(
             path,
             "main",
-            &format!("ps_{}", &self.settings.shader.version),
+            hlsl::Target::PS(self.shader_model),
             &self.settings.shader.ps_args,
         )?;
         let ps = self.renderer.create_pixel_shader_pipeline(&blob)?;

@@ -1,8 +1,10 @@
+use crate::*;
+use regex::Regex;
 use std::fs::File;
 use std::io::{BufReader, Read};
 use std::path::Path;
 use windows::core::{Interface, GUID, PWSTR};
-use windows::Win32::{Graphics::Direct3D::Dxc::*, Graphics::Direct3D12::D3D12_SHADER_BYTECODE};
+use windows::Win32::Graphics::{Direct3D::Dxc::*, Direct3D12::*};
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
@@ -14,6 +16,8 @@ pub enum Error {
     Compile(String),
     #[error("file too large")]
     FileTooLarge,
+    #[error("unsupported version")]
+    UnsupportedVersion,
 }
 
 impl From<std::io::Error> for Error {
@@ -72,11 +76,12 @@ fn create_instance<T: Interface>(clsid: &GUID) -> Result<T, Error> {
 
 fn create_args(
     entry_point: &str,
-    target: &str,
+    target: Target,
     path: Option<&str>,
     opts: &Vec<String>,
 ) -> (Vec<PWSTR>, Vec<Vec<u16>>) {
-    let mut args = vec!["-E", entry_point, "-T", target, "-I", "./include"];
+    let target = target.to_string();
+    let mut args = vec!["-E", entry_point, "-T", &target, "-I", "./include"];
     for opt in opts.iter() {
         args.push(opt);
     }
@@ -92,6 +97,95 @@ fn create_args(
         .map(|t| PWSTR(t.as_mut_ptr()))
         .collect::<Vec<_>>();
     (args, tmp)
+}
+
+const SHADER_MODELS: &[D3D_SHADER_MODEL] = &[
+    D3D_SHADER_MODEL_5_1,
+    D3D_SHADER_MODEL_6_0,
+    D3D_SHADER_MODEL_6_1,
+    D3D_SHADER_MODEL_6_2,
+    D3D_SHADER_MODEL_6_3,
+    D3D_SHADER_MODEL_6_4,
+    D3D_SHADER_MODEL_6_5,
+    D3D_SHADER_MODEL_6_6,
+    D3D_SHADER_MODEL_6_7,
+];
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub struct ShaderModel(D3D_SHADER_MODEL);
+
+impl ShaderModel {
+    pub fn new<T>(device: &ID3D12Device, version: Option<&T>) -> Result<Self, Error>
+    where
+        T: AsRef<str>,
+    {
+        version.map_or_else(
+            || Self::highest(device),
+            |version| Self::specify(version.as_ref()),
+        )
+    }
+
+    fn specify(version: &str) -> Result<Self, Error> {
+        let re = Regex::new(r"(\d+)_(\d+)").unwrap();
+        let cap = re
+            .captures(version)
+            .ok_or(std::io::Error::from(std::io::ErrorKind::InvalidData))?;
+        let v = i32::from_str_radix(&format!("{}{}", &cap[1], &cap[2]), 16).unwrap();
+        if !SHADER_MODELS.contains(&D3D_SHADER_MODEL(v)) {
+            return Err(Error::UnsupportedVersion);
+        }
+        Ok(Self(D3D_SHADER_MODEL(v)))
+    }
+
+    fn highest(device: &ID3D12Device) -> Result<Self, Error> {
+        unsafe {
+            let mut data = D3D12_FEATURE_DATA_SHADER_MODEL {
+                HighestShaderModel: D3D_SHADER_MODEL_6_5,
+            };
+            device.CheckFeatureSupport(
+                D3D12_FEATURE_SHADER_MODEL,
+                &mut data as *mut _ as _,
+                std::mem::size_of_val(&data) as _,
+            )?;
+            Ok(Self(data.HighestShaderModel))
+        }
+    }
+
+    fn as_str(&self) -> &str {
+        match self.0 {
+            D3D_SHADER_MODEL_5_1 => "5_1",
+            D3D_SHADER_MODEL_6_0 => "6_0",
+            D3D_SHADER_MODEL_6_1 => "6_1",
+            D3D_SHADER_MODEL_6_2 => "6_2",
+            D3D_SHADER_MODEL_6_3 => "6_3",
+            D3D_SHADER_MODEL_6_4 => "6_4",
+            D3D_SHADER_MODEL_6_5 => "6_5",
+            D3D_SHADER_MODEL_6_6 => "6_6",
+            D3D_SHADER_MODEL_6_7 => "6_7",
+            _ => unimplemented!(),
+        }
+    }
+}
+
+impl std::fmt::Display for ShaderModel {
+    fn fmt(&self, fmt: &mut std::fmt::Formatter) -> std::fmt::Result {
+        write!(fmt, "{}", self.as_str())
+    }
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum Target {
+    VS(ShaderModel),
+    PS(ShaderModel),
+}
+
+impl ToString for Target {
+    fn to_string(&self) -> String {
+        match self {
+            Self::VS(version) => format!("vs_{}", version),
+            Self::PS(version) => format!("ps_{}", version),
+        }
+    }
 }
 
 pub struct Compiler {
@@ -167,7 +261,7 @@ impl Compiler {
         &self,
         data: &str,
         entry_point: &str,
-        target: &str,
+        target: Target,
         args: &Vec<String>,
     ) -> Result<Blob, Error> {
         let (args, _tmp) = create_args(entry_point, target, None, args);
@@ -178,7 +272,7 @@ impl Compiler {
         &self,
         path: impl AsRef<Path>,
         entry_point: &str,
-        target: &str,
+        target: Target,
         args: &Vec<String>,
     ) -> Result<Blob, Error> {
         let path = path.as_ref();
@@ -202,11 +296,12 @@ mod tests {
     fn compile_from_str() {
         let compiler = Compiler::new().unwrap();
         let data = include_str!("shader/test.hlsl");
+        let version = ShaderModel::specify("6_0").unwrap();
         compiler
-            .compile_from_str(data, "vs_main", "vs_6_0", &vec![])
+            .compile_from_str(data, "vs_main", Target::VS(version), &vec![])
             .unwrap();
         compiler
-            .compile_from_str(data, "ps_main", "ps_6_0", &vec![])
+            .compile_from_str(data, "ps_main", Target::PS(version), &vec![])
             .unwrap();
     }
 
@@ -214,11 +309,35 @@ mod tests {
     fn compile_from_file() {
         let compiler = Compiler::new().unwrap();
         let path = "src/shader/test.hlsl";
+        let version = ShaderModel::specify("6_0").unwrap();
         compiler
-            .compile_from_file(path, "vs_main", "vs_6_0", &vec![])
+            .compile_from_file(path, "vs_main", Target::VS(version), &vec![])
             .unwrap();
         compiler
-            .compile_from_file(path, "ps_main", "ps_6_0", &vec![])
+            .compile_from_file(path, "ps_main", Target::PS(version), &vec![])
             .unwrap();
+    }
+
+    #[test]
+    fn specify_target_version() {
+        assert!(ShaderModel::specify("6_0").is_ok());
+        assert!(ShaderModel::specify("5_0").is_err());
+    }
+
+    #[test]
+    fn highest_target_version() {
+        use windows::Win32::Graphics::{Direct3D::*, Dxgi::*};
+
+        let adapter: IDXGIAdapter = unsafe {
+            let factory: IDXGIFactory4 = CreateDXGIFactory1().unwrap();
+            factory.EnumWarpAdapter().unwrap()
+        };
+        let device = unsafe {
+            let mut device: Option<ID3D12Device> = None;
+            D3D12CreateDevice(&adapter, D3D_FEATURE_LEVEL_12_1, &mut device).unwrap();
+            device.unwrap()
+        };
+        let version = ShaderModel::highest(&device).unwrap();
+        assert!(version.0 .0 >= D3D_SHADER_MODEL_6_0.0);
     }
 }

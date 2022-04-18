@@ -1,3 +1,6 @@
+[general]
+version = [1, 0]
+
 [window]
 x = 0
 y = 0
@@ -5,7 +8,6 @@ width = 1024
 height = 768
 
 [shader]
-version = "6_4"
 vs_args = []
 ps_args = []
 
