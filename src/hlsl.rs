@@ -43,7 +43,7 @@ impl From<IDxcBlobUtf8> for Error {
         unsafe {
             let slice = std::slice::from_raw_parts(
                 src.GetBufferPointer() as *const u8,
-                src.GetBufferSize(),
+                src.GetBufferSize() - 1,
             );
             Self::Compile(String::from_utf8_lossy(slice).to_string())
         }

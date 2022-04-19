@@ -535,7 +535,7 @@ impl PixelShader {
     }
 }
 
-pub trait UiRender {
+pub trait RenderUi {
     fn render(&self, cmd: &mltg::DrawCommand);
 }
 
@@ -737,7 +737,7 @@ impl Ui {
         }
     }
 
-    fn render(&self, index: usize, r: &impl UiRender) -> anyhow::Result<Signal> {
+    fn render(&self, index: usize, r: &impl RenderUi) -> anyhow::Result<Signal> {
         let buffer = &self.buffers[index];
         self.context.draw(&buffer.1, |cmd| {
             cmd.clear([0.0, 0.0, 0.0, 0.0]);
@@ -937,7 +937,7 @@ impl Renderer {
         clear_color: &[f32],
         ps: Option<&PixelShaderPipeline>,
         parameters: Option<&Parameters>,
-        r: &impl UiRender,
+        r: &impl RenderUi,
     ) -> anyhow::Result<()> {
         let swap_chain_desc = self.swap_chain.desc()?;
         let (handle, back_buffer, index) = self.swap_chain.current_buffer();

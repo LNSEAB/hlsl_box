@@ -8,23 +8,72 @@ struct Rendering {
     ps: PixelShaderPipeline,
 }
 
+struct ErrorMessage {
+    msg: String,
+}
+
 enum State {
     Init,
     Rendering(Rendering),
+    Error(ErrorMessage),
 }
 
-struct Empty {
+struct UiProperties {
+    factory: mltg::Factory,
     text_format: mltg::TextFormat,
-    white: mltg::Brush,
+    text_color: mltg::Brush,
 }
 
-impl UiRender for Empty {
+struct View {
+    ui_props: UiProperties,
+    state: State,
+}
+
+impl View {
+    fn new(_settings: &Arc<Settings>, factory: &mltg::Factory) -> anyhow::Result<Self> {
+        let text_format = factory.create_text_format(
+            mltg::Font::System("Yu Gothic UI"),
+            mltg::FontPoint(12.0),
+            None,
+        )?;
+        let text_color = factory.create_solid_color_brush([1.0, 1.0, 1.0, 1.0])?;
+        Ok(Self {
+            ui_props: UiProperties {
+                factory: factory.clone(),
+                text_format,
+                text_color,
+            },
+            state: State::Init,
+        })
+    }
+}
+
+impl RenderUi for View {
     fn render(&self, cmd: &mltg::DrawCommand) {
-        cmd.fill(
-            &mltg::Rect::new([100.0, 100.0], [100.0, 100.0]),
-            &self.white,
-        );
-        cmd.draw_text("test", &self.text_format, &self.white, [0.0, 0.0]);
+        match &self.state {
+            State::Error(e) => {
+                let mut h = 0.0;
+                for line in e.msg.split('\n') {
+                    let layout = self.ui_props.factory.create_text_layout(
+                        line,
+                        &self.ui_props.text_format,
+                        mltg::TextAlignment::Leading,
+                        None,
+                    );
+                    let layout = match layout {
+                        Ok(layout) => layout,
+                        Err(e) => {
+                            error!("{}", e);
+                            break;
+                        }
+                    };
+                    let size = layout.size();
+                    cmd.draw_text_layout(&layout, &self.ui_props.text_color, [0.0, h as _]);
+                    h += size.height;
+                }
+            }
+            _ => {}
+        }
     }
 }
 
@@ -36,11 +85,10 @@ pub struct Application {
     window_receiver: WindowReceiver,
     renderer: Renderer,
     clear_color: [f32; 4],
-    state: State,
     mouse: [f32; 2],
     start_time: std::time::Instant,
     dir: Option<DirMonitor>,
-    empty: Empty,
+    view: View,
 }
 
 impl Application {
@@ -75,14 +123,7 @@ impl Application {
             0.0,
         ];
         let factory = renderer.mltg_factory();
-        let empty = Empty {
-            text_format: factory.create_text_format(
-                mltg::Font::System("Yu Gothic UI"),
-                mltg::FontPoint(12.0),
-                None,
-            )?,
-            white: factory.create_solid_color_brush([1.0, 1.0, 1.0, 1.0])?,
-        };
+        let view = View::new(&settings, &factory)?;
         Ok(Self {
             _d3d12_device: d3d12_device,
             settings,
@@ -91,11 +132,10 @@ impl Application {
             compiler,
             renderer,
             clear_color,
-            state: State::Init,
             mouse: [0.0, 0.0],
             start_time: std::time::Instant::now(),
             dir: None,
-            empty,
+            view,
         })
     }
 
@@ -115,7 +155,7 @@ impl Application {
             time: 0.0,
         };
         self.renderer.wait_all_signals();
-        self.state = State::Rendering(Rendering {
+        self.view.state = State::Rendering(Rendering {
             path: path.to_path_buf(),
             parameters,
             ps,
@@ -135,6 +175,9 @@ impl Application {
                 Ok(WindowEvent::LoadFile(path)) => {
                     debug!("WindowEvent::LoadFile");
                     if let Err(e) = self.load_file(&path) {
+                        self.view.state = State::Error(ErrorMessage {
+                            msg: format!("{}", e),
+                        });
                         error!("{}", e);
                     }
                 }
@@ -143,7 +186,7 @@ impl Application {
                     if let Err(e) = self.renderer.resize(size) {
                         error!("{}", e);
                     }
-                    if let State::Rendering(r) = &mut self.state {
+                    if let State::Rendering(r) = &mut self.view.state {
                         r.parameters.resolution = [size.width as _, size.height as _];
                     }
                 }
@@ -180,32 +223,35 @@ impl Application {
                 _ => {}
             }
             if let Some(path) = self.dir.as_ref().and_then(|dir| dir.try_recv()) {
-                if let State::Rendering(r) = &self.state {
+                if let State::Rendering(r) = &self.view.state {
                     if r.path == path {
                         if let Err(e) = self.load_file(&path) {
+                            self.view.state = State::Error(ErrorMessage {
+                                msg: format!("{}", e),
+                            });
                             error!("{}", e);
                         }
                     }
                 }
             }
-            let ret = match &mut self.state {
-                State::Init => self
+            if let State::Rendering(r) = &mut self.view.state {
+                r.parameters.mouse = {
+                    let cursor_position = self.window_receiver.cursor_position.lock().unwrap();
+                    [cursor_position.x as _, cursor_position.y as _]
+                };
+                r.parameters.time = (std::time::Instant::now() - self.start_time).as_secs_f32();
+            }
+            let ret = match &self.view.state {
+                State::Rendering(r) => self.renderer.render(
+                    1,
+                    &self.clear_color,
+                    Some(&r.ps),
+                    Some(&r.parameters),
+                    &self.view,
+                ),
+                _ => self
                     .renderer
-                    .render(1, &self.clear_color, None, None, &self.empty),
-                State::Rendering(r) => {
-                    r.parameters.mouse = {
-                        let cursor_position = self.window_receiver.cursor_position.lock().unwrap();
-                        [cursor_position.x as _, cursor_position.y as _]
-                    };
-                    r.parameters.time = (std::time::Instant::now() - self.start_time).as_secs_f32();
-                    self.renderer.render(
-                        1,
-                        &self.clear_color,
-                        Some(&r.ps),
-                        Some(&r.parameters),
-                        &self.empty,
-                    )
-                }
+                    .render(1, &self.clear_color, None, None, &self.view),
             };
             if let Err(e) = ret {
                 error!("render: {}", e);
