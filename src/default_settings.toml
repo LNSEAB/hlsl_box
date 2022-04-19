@@ -13,3 +13,5 @@ ps_args = []
 
 [appearance]
 clear_color = [0.0, 0.0, 0.3]
+font = "Yu Gothic UI"
+font_size = 12.0

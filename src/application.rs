@@ -30,10 +30,10 @@ struct View {
 }
 
 impl View {
-    fn new(_settings: &Arc<Settings>, factory: &mltg::Factory) -> anyhow::Result<Self> {
+    fn new(settings: &Arc<Settings>, factory: &mltg::Factory) -> anyhow::Result<Self> {
         let text_format = factory.create_text_format(
-            mltg::Font::System("Yu Gothic UI"),
-            mltg::FontPoint(12.0),
+            mltg::Font::System(&settings.appearance.font),
+            mltg::FontPoint(settings.appearance.font_size),
             None,
         )?;
         let text_color = factory.create_solid_color_brush([1.0, 1.0, 1.0, 1.0])?;
@@ -212,6 +212,8 @@ impl Application {
                         },
                         appearance: settings::Appearance {
                             clear_color: self.settings.appearance.clear_color,
+                            font: self.settings.appearance.font.clone(),
+                            font_size: self.settings.appearance.font_size,
                         },
                     };
                     match settings.save(SETTINGS_PATH) {

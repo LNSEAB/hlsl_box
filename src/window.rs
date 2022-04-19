@@ -107,6 +107,7 @@ impl wita::EventHandler for Window {
             let position = self.main_window.position();
             let size = self.main_window.inner_size();
             self.event.send(WindowEvent::Closed { position, size }).ok();
+            debug!("main_window closed");
         }
     }
 }

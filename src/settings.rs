@@ -34,6 +34,8 @@ pub struct Shader {
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
 pub struct Appearance {
     pub clear_color: [f32; 3],
+    pub font: String,
+    pub font_size: f32,
 }
 
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
