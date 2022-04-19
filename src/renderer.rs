@@ -578,37 +578,15 @@ impl Ui {
                 .GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV)
                 as usize;
             let mut buffers = Vec::with_capacity(count);
-            let mut handle = desc_heap.GetCPUDescriptorHandleForHeapStart();
-            for i in 0..count {
-                let buffer = Texture2D::new(
-                    &format!("Ui::buffers[{}]", i),
-                    device,
-                    size.width as _,
-                    size.height as _,
-                    D3D12_RESOURCE_STATE_COMMON,
-                    None,
-                    Some(
-                        D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET
-                            | D3D12_RESOURCE_FLAG_ALLOW_SIMULTANEOUS_ACCESS,
-                    ),
-                )?;
-                buffer.handle().SetName(format!("Ui::buffer[{}]", i))?;
-                let srv_desc = D3D12_SHADER_RESOURCE_VIEW_DESC {
-                    ViewDimension: D3D12_SRV_DIMENSION_TEXTURE2D,
-                    Format: DXGI_FORMAT_R8G8B8A8_UNORM,
-                    Shader4ComponentMapping: D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING,
-                    Anonymous: D3D12_SHADER_RESOURCE_VIEW_DESC_0 {
-                        Texture2D: D3D12_TEX2D_SRV {
-                            MipLevels: 1,
-                            ..Default::default()
-                        },
-                    },
-                };
-                device.CreateShaderResourceView(buffer.handle(), &srv_desc, handle);
-                let target = context.create_render_target(&buffer)?;
-                buffers.push((buffer, target));
-                handle.ptr += desc_size;
-            }
+            Self::create_buffers(
+                device,
+                &context,
+                &desc_heap,
+                desc_size,
+                count,
+                size,
+                &mut buffers,
+            )?;
             let plane = Plane::new(device, PlaneOrigin::LeftTop)?;
             let root_signature: ID3D12RootSignature = {
                 let ranges = [D3D12_DESCRIPTOR_RANGE {
@@ -804,6 +782,27 @@ impl Ui {
         }
     }
 
+    fn resize(
+        &mut self,
+        device: &ID3D12Device,
+        size: wita::PhysicalSize<u32>,
+    ) -> anyhow::Result<()> {
+        let len = self.buffers.len();
+        self.wait_all_signals();
+        self.buffers.clear();
+        self.context.flush();
+        Self::create_buffers(
+            device,
+            &self.context,
+            &self.desc_heap,
+            self.desc_size,
+            len,
+            size,
+            &mut self.buffers,
+        )?;
+        Ok(())
+    }
+
     fn wait_all_signals(&self) {
         for signal in self.signals.borrow().iter() {
             if let Some(signal) = signal {
@@ -812,6 +811,51 @@ impl Ui {
                     self.wait_event.wait();
                 }
             }
+        }
+    }
+
+    fn create_buffers(
+        device: &ID3D12Device,
+        context: &mltg::Context<mltg::Direct3D12>,
+        desc_heap: &ID3D12DescriptorHeap,
+        desc_size: usize,
+        count: usize,
+        size: wita::PhysicalSize<u32>,
+        buffers: &mut Vec<(Texture2D, mltg::d3d12::RenderTarget)>,
+    ) -> anyhow::Result<()> {
+        unsafe {
+            let mut handle = desc_heap.GetCPUDescriptorHandleForHeapStart();
+            for i in 0..count {
+                let buffer = Texture2D::new(
+                    &format!("Ui::buffers[{}]", i),
+                    device,
+                    size.width as _,
+                    size.height as _,
+                    D3D12_RESOURCE_STATE_COMMON,
+                    None,
+                    Some(
+                        D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET
+                            | D3D12_RESOURCE_FLAG_ALLOW_SIMULTANEOUS_ACCESS,
+                    ),
+                )?;
+                buffer.handle().SetName(format!("Ui::buffer[{}]", i))?;
+                let srv_desc = D3D12_SHADER_RESOURCE_VIEW_DESC {
+                    ViewDimension: D3D12_SRV_DIMENSION_TEXTURE2D,
+                    Format: DXGI_FORMAT_R8G8B8A8_UNORM,
+                    Shader4ComponentMapping: D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING,
+                    Anonymous: D3D12_SHADER_RESOURCE_VIEW_DESC_0 {
+                        Texture2D: D3D12_TEX2D_SRV {
+                            MipLevels: 1,
+                            ..Default::default()
+                        },
+                    },
+                };
+                device.CreateShaderResourceView(buffer.handle(), &srv_desc, handle);
+                let target = context.create_render_target(&buffer)?;
+                buffers.push((buffer, target));
+                handle.ptr += desc_size;
+            }
+            Ok(())
         }
     }
 }
@@ -978,6 +1022,7 @@ impl Renderer {
     pub fn resize(&mut self, size: wita::PhysicalSize<u32>) -> anyhow::Result<()> {
         self.wait_all_signals();
         self.swap_chain.resize(&self.d3d12_device, size)?;
+        self.ui.resize(&self.d3d12_device, size)?;
         Ok(())
     }
 

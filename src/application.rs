@@ -77,8 +77,8 @@ impl Application {
         let factory = renderer.mltg_factory();
         let empty = Empty {
             text_format: factory.create_text_format(
-                mltg::Font::System("Yu Gothic"),
-                mltg::FontPoint(14.0),
+                mltg::Font::System("Yu Gothic UI"),
+                mltg::FontPoint(12.0),
                 None,
             )?,
             white: factory.create_solid_color_brush([1.0, 1.0, 1.0, 1.0])?,
