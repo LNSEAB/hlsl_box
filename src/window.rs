@@ -7,7 +7,10 @@ pub enum WindowEvent {
     LoadFile(PathBuf),
     Resized(wita::PhysicalSize<u32>),
     DpiChanged(u32),
-    Closed,
+    Closed {
+        position: wita::ScreenPosition,
+        size: wita::PhysicalSize<u32>,
+    },
 }
 
 pub struct WindowReceiver {
@@ -19,7 +22,6 @@ pub struct WindowReceiver {
 pub struct Window {
     main_window: wita::Window,
     event: mpsc::Sender<WindowEvent>,
-    settings: Arc<Settings>,
     cursor_position: Arc<Mutex<wita::PhysicalPosition<i32>>>,
 }
 
@@ -43,7 +45,6 @@ impl Window {
             Self {
                 main_window: main_window.clone(),
                 event: tx,
-                settings,
                 cursor_position: cursor_position.clone(),
             },
             WindowReceiver {
@@ -103,28 +104,9 @@ impl wita::EventHandler for Window {
 
     fn closed(&mut self, ev: wita::event::Closed) {
         if ev.window == &self.main_window {
-            self.event.send(WindowEvent::Closed).ok();
             let position = self.main_window.position();
             let size = self.main_window.inner_size();
-            let settings = Settings {
-                window: settings::Window {
-                    x: position.x,
-                    y: position.y,
-                    width: size.width,
-                    height: size.height,
-                },
-                shader: settings::Shader {
-                    version: self.settings.shader.version.clone(),
-                    vs_args: self.settings.shader.vs_args.clone(),
-                    ps_args: self.settings.shader.ps_args.clone(),
-                },
-                appearance: settings::Appearance {
-                    clear_color: self.settings.appearance.clear_color,
-                },
-            };
-            if let Err(e) = settings.save(SETTINGS_PATH) {
-                error!("save settings: {}", e);
-            }
+            self.event.send(WindowEvent::Closed { position, size }).ok();
         }
     }
 }

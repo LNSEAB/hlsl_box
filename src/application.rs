@@ -133,6 +133,7 @@ impl Application {
         loop {
             match self.window_receiver.event.try_recv() {
                 Ok(WindowEvent::LoadFile(path)) => {
+                    debug!("WindowEvent::LoadFile");
                     if let Err(e) = self.load_file(&path) {
                         error!("{}", e);
                     }
@@ -152,6 +153,30 @@ impl Application {
                         error!("{}", e);
                     }
                 }
+                Ok(WindowEvent::Closed { position, size }) => {
+                    debug!("WindowEvent::Closed");
+                    let settings = Settings {
+                        window: settings::Window {
+                            x: position.x,
+                            y: position.y,
+                            width: size.width,
+                            height: size.height,
+                        },
+                        shader: settings::Shader {
+                            version: self.settings.shader.version.clone(),
+                            vs_args: self.settings.shader.vs_args.clone(),
+                            ps_args: self.settings.shader.ps_args.clone(),
+                        },
+                        appearance: settings::Appearance {
+                            clear_color: self.settings.appearance.clear_color,
+                        },
+                    };
+                    match settings.save(SETTINGS_PATH) {
+                        Ok(_) => info!("saved settings"),
+                        Err(e) => error!("save settings: {}", e),
+                    }
+                    break;
+                }
                 _ => {}
             }
             if let Some(path) = self.dir.as_ref().and_then(|dir| dir.try_recv()) {
@@ -162,9 +187,6 @@ impl Application {
                         }
                     }
                 }
-            }
-            if self.window_receiver.main_window.is_closed() {
-                break;
             }
             let ret = match &mut self.state {
                 State::Init => self
