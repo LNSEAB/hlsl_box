@@ -803,6 +803,11 @@ impl Ui {
         Ok(())
     }
 
+    fn change_dpi(&self, dpi: u32) -> anyhow::Result<()> {
+        self.context.set_dpi(dpi as _);
+        Ok(())
+    }
+
     fn wait_all_signals(&self) {
         for signal in self.signals.borrow().iter() {
             if let Some(signal) = signal {
@@ -1023,6 +1028,11 @@ impl Renderer {
         self.wait_all_signals();
         self.swap_chain.resize(&self.d3d12_device, size)?;
         self.ui.resize(&self.d3d12_device, size)?;
+        Ok(())
+    }
+
+    pub fn change_dpi(&mut self, dpi: u32) -> anyhow::Result<()> {
+        self.ui.change_dpi(dpi)?;
         Ok(())
     }
 

@@ -146,6 +146,12 @@ impl Application {
                         r.parameters.resolution = [size.width as _, size.height as _];
                     }
                 }
+                Ok(WindowEvent::DpiChanged(dpi)) => {
+                    debug!("WindowEvent::DpiChanged");
+                    if let Err(e) = self.renderer.change_dpi(dpi) {
+                        error!("{}", e);
+                    }
+                }
                 _ => {}
             }
             if let Some(path) = self.dir.as_ref().and_then(|dir| dir.try_recv()) {

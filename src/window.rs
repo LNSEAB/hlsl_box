@@ -6,6 +6,7 @@ use std::sync::*;
 pub enum WindowEvent {
     LoadFile(PathBuf),
     Resized(wita::PhysicalSize<u32>),
+    DpiChanged(u32),
     Closed,
 }
 
@@ -90,6 +91,13 @@ impl wita::EventHandler for Window {
         if ev.window == &self.main_window {
             self.event.send(WindowEvent::Resized(ev.size)).ok();
             debug!("main_window resized");
+        }
+    }
+
+    fn dpi_changed(&mut self, ev: wita::event::DpiChanged) {
+        if ev.window == &self.main_window {
+            self.event.send(WindowEvent::DpiChanged(ev.new_dpi)).ok();
+            debug!("main_window dpi changed");
         }
     }
 
