@@ -433,7 +433,7 @@ impl PixelShader {
                 include_str!("./shader/plane.hlsl"),
                 "main",
                 hlsl::Target::VS(shader_model),
-                &vec![],
+                &[],
             )?;
             Ok(Self {
                 device: device.clone(),
@@ -651,13 +651,13 @@ impl Ui {
                     shader,
                     "vs_main",
                     hlsl::Target::VS(shader_model),
-                    &vec![],
+                    &[],
                 )?;
                 let ps = compiler.compile_from_str(
                     shader,
                     "ps_main",
                     hlsl::Target::PS(shader_model),
-                    &vec![],
+                    &[],
                 )?;
                 let input_elements = [
                     D3D12_INPUT_ELEMENT_DESC {

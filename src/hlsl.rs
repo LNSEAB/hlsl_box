@@ -78,12 +78,12 @@ fn create_args(
     entry_point: &str,
     target: Target,
     path: Option<&str>,
-    opts: &Vec<String>,
+    opts: &[String],
 ) -> (Vec<PWSTR>, Vec<Vec<u16>>) {
     let target = target.to_string();
     let mut args = vec!["-E", entry_point, "-T", &target, "-I", "./include"];
     for opt in opts.iter() {
-        args.push(opt);
+        args.push(opt.as_ref());
     }
     if let Some(path) = path {
         args.push(path);
@@ -262,7 +262,7 @@ impl Compiler {
         data: &str,
         entry_point: &str,
         target: Target,
-        args: &Vec<String>,
+        args: &[String],
     ) -> Result<Blob, Error> {
         let (args, _tmp) = create_args(entry_point, target, None, args);
         self.compile_impl(data, &args)
@@ -273,7 +273,7 @@ impl Compiler {
         path: impl AsRef<Path>,
         entry_point: &str,
         target: Target,
-        args: &Vec<String>,
+        args: &[String],
     ) -> Result<Blob, Error> {
         let path = path.as_ref();
         let data = {
@@ -298,10 +298,10 @@ mod tests {
         let data = include_str!("shader/test.hlsl");
         let version = ShaderModel::specify("6_0").unwrap();
         compiler
-            .compile_from_str(data, "vs_main", Target::VS(version), &vec![])
+            .compile_from_str(data, "vs_main", Target::VS(version), &[])
             .unwrap();
         compiler
-            .compile_from_str(data, "ps_main", Target::PS(version), &vec![])
+            .compile_from_str(data, "ps_main", Target::PS(version), &[])
             .unwrap();
     }
 
@@ -311,10 +311,10 @@ mod tests {
         let path = "src/shader/test.hlsl";
         let version = ShaderModel::specify("6_0").unwrap();
         compiler
-            .compile_from_file(path, "vs_main", Target::VS(version), &vec![])
+            .compile_from_file(path, "vs_main", Target::VS(version), &[])
             .unwrap();
         compiler
-            .compile_from_file(path, "ps_main", Target::PS(version), &vec![])
+            .compile_from_file(path, "ps_main", Target::PS(version), &[])
             .unwrap();
     }
 
