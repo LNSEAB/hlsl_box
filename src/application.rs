@@ -1,11 +1,81 @@
 use crate::*;
+use std::cell::Cell;
 use std::path::{Path, PathBuf};
 use windows::Win32::Graphics::{Direct3D::*, Direct3D12::*};
+
+#[derive(Clone)]
+struct UiProperties {
+    factory: mltg::Factory,
+    text_format: mltg::TextFormat,
+    text_color: mltg::Brush,
+    bg_color: mltg::Brush,
+}
+
+struct FrameCounter {
+    count: Cell<u64>,
+    text_layout: RefCell<mltg::TextLayout>,
+    t: Cell<std::time::Instant>,
+    ui_props: UiProperties,
+}
+
+impl FrameCounter {
+    fn new(ui_props: &UiProperties) -> anyhow::Result<Self> {
+        let text_layout = ui_props.factory.create_text_layout(
+            " 0",
+            &ui_props.text_format,
+            mltg::TextAlignment::Center,
+            None,
+        )?;
+        Ok(Self {
+            count: Cell::new(0),
+            text_layout: RefCell::new(text_layout),
+            t: Cell::new(std::time::Instant::now()),
+            ui_props: ui_props.clone(),
+        })
+    }
+
+    fn reset(&self) {
+        self.count.set(0);
+        self.t.set(std::time::Instant::now());
+    }
+
+    fn update(&self) -> anyhow::Result<()> {
+        if (std::time::Instant::now() - self.t.get()).as_millis() >= 1000 {
+            let text_layout = self.ui_props.factory.create_text_layout(
+                &self.count.get().to_string(),
+                &self.ui_props.text_format,
+                mltg::TextAlignment::Center,
+                None,
+            )?;
+            *self.text_layout.borrow_mut() = text_layout;
+            self.reset();
+        } else {
+            self.count.set(self.count.get() + 1);
+        }
+        Ok(())
+    }
+
+    fn draw(&self, cmd: &mltg::DrawCommand, pos: impl Into<mltg::Point>) {
+        let text_layout = self.text_layout.borrow();
+        let pos = pos.into();
+        let size = text_layout.size();
+        cmd.fill(
+            &mltg::Rect::new(pos, [size.width + 10.0, size.height + 6.0]),
+            &self.ui_props.bg_color,
+        );
+        cmd.draw_text_layout(
+            &text_layout,
+            &self.ui_props.text_color,
+            [pos.x + 5.0, pos.y + 3.0],
+        );
+    }
+}
 
 struct Rendering {
     path: PathBuf,
     parameters: Parameters,
     ps: PixelShaderPipeline,
+    frame_counter: FrameCounter,
 }
 
 struct ErrorMessage {
@@ -18,31 +88,15 @@ enum State {
     Error(ErrorMessage),
 }
 
-struct UiProperties {
-    factory: mltg::Factory,
-    text_format: mltg::TextFormat,
-    text_color: mltg::Brush,
-}
-
 struct View {
     ui_props: UiProperties,
     state: State,
 }
 
 impl View {
-    fn new(settings: &Arc<Settings>, factory: &mltg::Factory) -> anyhow::Result<Self> {
-        let text_format = factory.create_text_format(
-            mltg::Font::System(&settings.appearance.font),
-            mltg::FontPoint(settings.appearance.font_size),
-            None,
-        )?;
-        let text_color = factory.create_solid_color_brush([1.0, 1.0, 1.0, 1.0])?;
+    fn new(ui_props: &UiProperties) -> anyhow::Result<Self> {
         Ok(Self {
-            ui_props: UiProperties {
-                factory: factory.clone(),
-                text_format,
-                text_color,
-            },
+            ui_props: ui_props.clone(),
             state: State::Init,
         })
     }
@@ -51,6 +105,10 @@ impl View {
 impl RenderUi for View {
     fn render(&self, cmd: &mltg::DrawCommand) {
         match &self.state {
+            State::Rendering(r) => {
+                r.frame_counter.update().unwrap();
+                r.frame_counter.draw(cmd, [10.0, 10.0]);
+            }
             State::Error(e) => {
                 let mut h = 0.0;
                 for line in e.msg.split('\n') {
@@ -89,6 +147,7 @@ pub struct Application {
     start_time: std::time::Instant,
     dir: Option<DirMonitor>,
     view: View,
+    ui_props: UiProperties,
 }
 
 impl Application {
@@ -126,7 +185,20 @@ impl Application {
             &clear_color,
         )?;
         let factory = renderer.mltg_factory();
-        let view = View::new(&settings, &factory)?;
+        let text_format = factory.create_text_format(
+            mltg::Font::System(&settings.appearance.font),
+            mltg::FontPoint(settings.appearance.font_size),
+            None,
+        )?;
+        let text_color = factory.create_solid_color_brush([1.0, 1.0, 1.0, 1.0])?;
+        let bg_color = factory.create_solid_color_brush([0.0, 0.0, 0.0, 0.7])?;
+        let ui_props = UiProperties {
+            factory,
+            text_format,
+            text_color,
+            bg_color,
+        };
+        let view = View::new(&ui_props)?;
         Ok(Self {
             _d3d12_device: d3d12_device,
             settings,
@@ -139,6 +211,7 @@ impl Application {
             start_time: std::time::Instant::now(),
             dir: None,
             view,
+            ui_props,
         })
     }
 
@@ -157,11 +230,13 @@ impl Application {
             mouse: self.mouse.clone(),
             time: 0.0,
         };
+        let frame_counter = FrameCounter::new(&self.ui_props,)?;
         self.renderer.wait_all_signals();
         self.view.state = State::Rendering(Rendering {
             path: path.to_path_buf(),
             parameters,
             ps,
+            frame_counter,
         });
         self.start_time = std::time::Instant::now();
         self.dir = Some(DirMonitor::new(path.parent().unwrap())?);
