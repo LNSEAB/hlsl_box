@@ -189,9 +189,6 @@ impl Application {
                     if let Err(e) = self.renderer.resize(size) {
                         error!("{}", e);
                     }
-                    if let State::Rendering(r) = &mut self.view.state {
-                        r.parameters.resolution = [size.width as _, size.height as _];
-                    }
                 }
                 Ok(WindowEvent::DpiChanged(dpi)) => {
                     debug!("WindowEvent::DpiChanged");

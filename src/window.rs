@@ -92,7 +92,8 @@ impl wita::EventHandler for Window {
 
     fn resizing(&mut self, ev: wita::event::Resizing) {
         if ev.window == &self.main_window {
-            ev.size.height = ev.size.width * self.settings.resolution.height / self.settings.resolution.width;
+            ev.size.height =
+                ev.size.width * self.settings.resolution.height / self.settings.resolution.width;
         }
     }
 
