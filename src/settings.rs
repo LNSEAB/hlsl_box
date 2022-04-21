@@ -61,6 +61,8 @@ pub struct Appearance {
     pub clear_color: [f32; 3],
     pub font: String,
     pub font_size: f32,
+    pub text_color: [f32; 4],
+    pub background_color: [f32; 4],
 }
 
 #[derive(Debug, serde::Serialize, serde::Deserialize)]

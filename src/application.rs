@@ -21,7 +21,7 @@ struct FrameCounter {
 impl FrameCounter {
     fn new(ui_props: &UiProperties) -> anyhow::Result<Self> {
         let text_layout = ui_props.factory.create_text_layout(
-            " 0",
+            "0",
             &ui_props.text_format,
             mltg::TextAlignment::Center,
             None,
@@ -56,17 +56,24 @@ impl FrameCounter {
     }
 
     fn draw(&self, cmd: &mltg::DrawCommand, pos: impl Into<mltg::Point>) {
+        let margin = mltg::Size::new(5.0, 3.0);
         let text_layout = self.text_layout.borrow();
         let pos = pos.into();
         let size = text_layout.size();
         cmd.fill(
-            &mltg::Rect::new(pos, [size.width + 10.0, size.height + 6.0]),
+            &mltg::Rect::new(
+                pos,
+                [
+                    size.width + margin.width * 2.0,
+                    size.height + margin.height * 2.0,
+                ],
+            ),
             &self.ui_props.bg_color,
         );
         cmd.draw_text_layout(
             &text_layout,
             &self.ui_props.text_color,
-            [pos.x + 5.0, pos.y + 3.0],
+            [pos.x + margin.width, pos.y + margin.height],
         );
     }
 }
@@ -190,8 +197,8 @@ impl Application {
             mltg::FontPoint(settings.appearance.font_size),
             None,
         )?;
-        let text_color = factory.create_solid_color_brush([1.0, 1.0, 1.0, 1.0])?;
-        let bg_color = factory.create_solid_color_brush([0.0, 0.0, 0.0, 0.7])?;
+        let text_color = factory.create_solid_color_brush(settings.appearance.text_color)?;
+        let bg_color = factory.create_solid_color_brush(settings.appearance.background_color)?;
         let ui_props = UiProperties {
             factory,
             text_format,
@@ -230,7 +237,7 @@ impl Application {
             mouse: self.mouse.clone(),
             time: 0.0,
         };
-        let frame_counter = FrameCounter::new(&self.ui_props,)?;
+        let frame_counter = FrameCounter::new(&self.ui_props)?;
         self.renderer.wait_all_signals();
         self.view.state = State::Rendering(Rendering {
             path: path.to_path_buf(),
