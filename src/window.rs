@@ -20,6 +20,7 @@ pub struct WindowReceiver {
 }
 
 pub struct Window {
+    settings: Arc<Settings>,
     main_window: wita::Window,
     event: mpsc::Sender<WindowEvent>,
     cursor_position: Arc<Mutex<wita::PhysicalPosition<i32>>>,
@@ -43,6 +44,7 @@ impl Window {
         let cursor_position = Arc::new(Mutex::new(wita::PhysicalPosition::new(0, 0)));
         Ok((
             Self {
+                settings,
                 main_window: main_window.clone(),
                 event: tx,
                 cursor_position: cursor_position.clone(),
@@ -85,6 +87,12 @@ impl wita::EventHandler for Window {
                 .send(WindowEvent::LoadFile(ev.paths[0].to_path_buf()))
                 .ok();
             debug!("main_window drop_files");
+        }
+    }
+
+    fn resizing(&mut self, ev: wita::event::Resizing) {
+        if ev.window == &self.main_window {
+            ev.size.height = ev.size.width * self.settings.resolution.height / self.settings.resolution.width;
         }
     }
 

@@ -104,24 +104,27 @@ impl Application {
             }
             info!("enable debug layer");
         }
+        info!("settings version: {}", settings.general.version);
         let d3d12_device: ID3D12Device = unsafe {
             let mut device = None;
             D3D12CreateDevice(None, D3D_FEATURE_LEVEL_12_1, &mut device).map(|_| device.unwrap())?
         };
         let shader_model = hlsl::ShaderModel::new(&d3d12_device, settings.shader.version.as_ref())?;
-        info!("shader_model: {}", shader_model);
-        let renderer = Renderer::new(
-            &d3d12_device,
-            &window_receiver.main_window,
-            &compiler,
-            shader_model,
-        )?;
+        info!("shader model: {}", shader_model);
         let clear_color = [
             settings.appearance.clear_color[0],
             settings.appearance.clear_color[1],
             settings.appearance.clear_color[2],
             0.0,
         ];
+        let renderer = Renderer::new(
+            &d3d12_device,
+            &window_receiver.main_window,
+            settings.resolution.clone().into(),
+            &compiler,
+            shader_model,
+            &clear_color,
+        )?;
         let factory = renderer.mltg_factory();
         let view = View::new(&settings, &factory)?;
         Ok(Self {
@@ -148,7 +151,7 @@ impl Application {
             &self.settings.shader.ps_args,
         )?;
         let ps = self.renderer.create_pixel_shader_pipeline(&blob)?;
-        let resolution = self.window_receiver.main_window.inner_size();
+        let resolution = self.settings.resolution.clone();
         let parameters = Parameters {
             resolution: [resolution.width as _, resolution.height as _],
             mouse: self.mouse.clone(),
@@ -199,22 +202,16 @@ impl Application {
                 Ok(WindowEvent::Closed { position, size }) => {
                     debug!("WindowEvent::Closed");
                     let settings = Settings {
+                        general: self.settings.general.clone(),
                         window: settings::Window {
                             x: position.x,
                             y: position.y,
                             width: size.width,
                             height: size.height,
                         },
-                        shader: settings::Shader {
-                            version: self.settings.shader.version.clone(),
-                            vs_args: self.settings.shader.vs_args.clone(),
-                            ps_args: self.settings.shader.ps_args.clone(),
-                        },
-                        appearance: settings::Appearance {
-                            clear_color: self.settings.appearance.clear_color,
-                            font: self.settings.appearance.font.clone(),
-                            font_size: self.settings.appearance.font_size,
-                        },
+                        resolution: self.settings.resolution.clone(),
+                        shader: self.settings.shader.clone(),
+                        appearance: self.settings.appearance.clone(),
                     };
                     match settings.save(SETTINGS_PATH) {
                         Ok(_) => info!("saved settings"),

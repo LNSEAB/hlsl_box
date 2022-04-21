@@ -70,6 +70,7 @@ impl PlaneBuffer {
     }
 }
 
+#[derive(Clone)]
 struct Plane {
     _buffer: Buffer,
     vbv: D3D12_VERTEX_BUFFER_VIEW,
@@ -291,20 +292,58 @@ impl SwapChain {
         }
     }
 
-    fn desc(&self) -> anyhow::Result<DXGI_SWAP_CHAIN_DESC1> {
+    fn current_buffer(&self) -> usize {
+        unsafe { self.swap_chain.GetCurrentBackBufferIndex() as usize }
+    }
+
+    fn begin(&self, index: usize, cmd_list: &ID3D12GraphicsCommandList, clear_color: &[f32; 4]) {
+        transition_barriers(
+            cmd_list,
+            [TransitionBarrier {
+                resource: self.back_buffers[index].clone(),
+                subresource: 0,
+                state_before: D3D12_RESOURCE_STATE_PRESENT,
+                state_after: D3D12_RESOURCE_STATE_RENDER_TARGET,
+            }],
+        );
         unsafe {
-            let desc = self.swap_chain.GetDesc1()?;
-            Ok(desc)
+            let mut handle = self.rtv_heap.GetCPUDescriptorHandleForHeapStart();
+            handle.ptr += self.rtv_size * index;
+            cmd_list.ClearRenderTargetView(handle, clear_color.as_ptr(), &[]);
         }
     }
 
-    fn current_buffer(&self) -> (D3D12_CPU_DESCRIPTOR_HANDLE, ID3D12Resource, usize) {
+    fn set_target(&self, index: usize, cmd_list: &ID3D12GraphicsCommandList) {
         unsafe {
-            let index = self.swap_chain.GetCurrentBackBufferIndex() as usize;
             let mut handle = self.rtv_heap.GetCPUDescriptorHandleForHeapStart();
             handle.ptr += self.rtv_size * index;
-            (handle, self.back_buffers[index].clone(), index)
+            let desc = self.swap_chain.GetDesc1().unwrap();
+            let rtvs = [handle.clone()];
+            cmd_list.RSSetViewports(&[D3D12_VIEWPORT {
+                Width: desc.Width as _,
+                Height: desc.Height as _,
+                MaxDepth: 1.0,
+                ..Default::default()
+            }]);
+            cmd_list.RSSetScissorRects(&[RECT {
+                right: desc.Width as _,
+                bottom: desc.Height as _,
+                ..Default::default()
+            }]);
+            cmd_list.OMSetRenderTargets(rtvs.len() as _, rtvs.as_ptr(), false, std::ptr::null());
         }
+    }
+
+    fn end(&self, index: usize, cmd_list: &ID3D12GraphicsCommandList) {
+        transition_barriers(
+            cmd_list,
+            [TransitionBarrier {
+                resource: self.back_buffers[index].clone(),
+                subresource: 0,
+                state_before: D3D12_RESOURCE_STATE_RENDER_TARGET,
+                state_after: D3D12_RESOURCE_STATE_PRESENT,
+            }],
+        );
     }
 
     fn present(&self, interval: u32) -> anyhow::Result<Signal> {
@@ -535,58 +574,20 @@ impl PixelShader {
     }
 }
 
-pub trait RenderUi {
-    fn render(&self, cmd: &mltg::DrawCommand);
-}
-
-struct Ui {
-    context: mltg::Context<mltg::Direct3D12>,
-    cmd_queue: CommandQueue,
-    desc_heap: ID3D12DescriptorHeap,
-    desc_size: usize,
-    buffers: Vec<(Texture2D, mltg::d3d12::RenderTarget)>,
+#[derive(Clone)]
+struct CopyTextureShader {
     plane: Plane,
     root_signature: ID3D12RootSignature,
     pipeline: ID3D12PipelineState,
-    signals: RefCell<Vec<Option<Signal>>>,
-    wait_event: Event,
 }
 
-impl Ui {
+impl CopyTextureShader {
     fn new(
         device: &ID3D12Device,
-        count: usize,
-        window: &wita::Window,
         compiler: &hlsl::Compiler,
         shader_model: hlsl::ShaderModel,
     ) -> anyhow::Result<Self> {
         unsafe {
-            let size = window.inner_size();
-            let cmd_queue = CommandQueue::new(device, D3D12_COMMAND_LIST_TYPE_DIRECT)?;
-            cmd_queue.queue.SetName("Ui::cmd_queue::queue")?;
-            let context = mltg::Context::new(mltg::Direct3D12::new(device, &cmd_queue.queue)?)?;
-            context.set_dpi(window.dpi() as _);
-            let desc_heap: ID3D12DescriptorHeap =
-                device.CreateDescriptorHeap(&D3D12_DESCRIPTOR_HEAP_DESC {
-                    Type: D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV,
-                    NumDescriptors: count as _,
-                    Flags: D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE,
-                    ..Default::default()
-                })?;
-            desc_heap.SetName("Ui::desc_heap")?;
-            let desc_size = device
-                .GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV)
-                as usize;
-            let mut buffers = Vec::with_capacity(count);
-            Self::create_buffers(
-                device,
-                &context,
-                &desc_heap,
-                desc_size,
-                count,
-                size,
-                &mut buffers,
-            )?;
             let plane = Plane::new(device, PlaneOrigin::LeftTop)?;
             let root_signature: ID3D12RootSignature = {
                 let ranges = [D3D12_DESCRIPTOR_RANGE {
@@ -644,9 +645,8 @@ impl Ui {
                     ),
                 )?
             };
-            root_signature.SetName("Ui::root_signature")?;
             let pipeline: ID3D12PipelineState = {
-                let shader = include_str!("./shader/ui.hlsl");
+                let shader = include_str!("./shader/copy_texture.hlsl");
                 let vs = compiler.compile_from_str(
                     shader,
                     "vs_main",
@@ -720,7 +720,215 @@ impl Ui {
                 };
                 device.CreateGraphicsPipelineState(&desc)?
             };
-            pipeline.SetName("Ui::pipeline")?;
+            Ok(Self {
+                plane,
+                root_signature,
+                pipeline,
+            })
+        }
+    }
+}
+
+struct RenderTarget {
+    rtv_heap: ID3D12DescriptorHeap,
+    rtv_size: usize,
+    desc_heap: ID3D12DescriptorHeap,
+    desc_size: usize,
+    buffers: Vec<Texture2D>,
+    copy_texture: CopyTextureShader,
+    size: wita::PhysicalSize<u32>,
+}
+
+impl RenderTarget {
+    fn new(
+        device: &ID3D12Device,
+        size: wita::PhysicalSize<u32>,
+        copy_texture: CopyTextureShader,
+        count: usize,
+        clear_color: &[f32; 4],
+    ) -> anyhow::Result<Self> {
+        unsafe {
+            let rtv_heap: ID3D12DescriptorHeap =
+                device.CreateDescriptorHeap(&D3D12_DESCRIPTOR_HEAP_DESC {
+                    Type: D3D12_DESCRIPTOR_HEAP_TYPE_RTV,
+                    NumDescriptors: count as _,
+                    ..Default::default()
+                })?;
+            let rtv_size =
+                device.GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_RTV) as usize;
+            let desc_heap: ID3D12DescriptorHeap =
+                device.CreateDescriptorHeap(&D3D12_DESCRIPTOR_HEAP_DESC {
+                    Type: D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV,
+                    NumDescriptors: count as _,
+                    Flags: D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE,
+                    ..Default::default()
+                })?;
+            let desc_size = device
+                .GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV)
+                as usize;
+            let mut buffers = Vec::with_capacity(count);
+            let mut rtv_handle = rtv_heap.GetCPUDescriptorHandleForHeapStart();
+            let mut srv_handle = desc_heap.GetCPUDescriptorHandleForHeapStart();
+            for i in 0..count {
+                let texture = Texture2D::new(
+                    &format!("RenderTarget::texture[{}]", i),
+                    device,
+                    size.width as _,
+                    size.height,
+                    D3D12_RESOURCE_STATE_COMMON,
+                    None,
+                    Some(D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET),
+                    clear_color,
+                )?;
+                let rtv_desc = D3D12_RENDER_TARGET_VIEW_DESC {
+                    Format: DXGI_FORMAT_R8G8B8A8_UNORM,
+                    ViewDimension: D3D12_RTV_DIMENSION_TEXTURE2D,
+                    Anonymous: D3D12_RENDER_TARGET_VIEW_DESC_0 {
+                        Texture2D: D3D12_TEX2D_RTV::default(),
+                    },
+                };
+                let srv_desc = D3D12_SHADER_RESOURCE_VIEW_DESC {
+                    Format: DXGI_FORMAT_R8G8B8A8_UNORM,
+                    ViewDimension: D3D12_SRV_DIMENSION_TEXTURE2D,
+                    Shader4ComponentMapping: D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING,
+                    Anonymous: D3D12_SHADER_RESOURCE_VIEW_DESC_0 {
+                        Texture2D: D3D12_TEX2D_SRV {
+                            MipLevels: 1,
+                            ..Default::default()
+                        },
+                    },
+                };
+                device.CreateRenderTargetView(texture.handle(), &rtv_desc, rtv_handle);
+                device.CreateShaderResourceView(texture.handle(), &srv_desc, srv_handle);
+                buffers.push(texture);
+                rtv_handle.ptr += rtv_size;
+                srv_handle.ptr += desc_size;
+            }
+            Ok(Self {
+                rtv_heap,
+                rtv_size,
+                desc_heap,
+                desc_size,
+                buffers,
+                copy_texture,
+                size,
+            })
+        }
+    }
+
+    fn set_target(&self, index: usize, cmd_list: &ID3D12GraphicsCommandList, clear_color: &[f32]) {
+        unsafe {
+            let mut handle = self.rtv_heap.GetCPUDescriptorHandleForHeapStart();
+            handle.ptr += index * self.rtv_size;
+            let rtvs = [handle];
+            transition_barriers(
+                &cmd_list,
+                [TransitionBarrier {
+                    resource: self.buffers[index].handle().clone(),
+                    subresource: 0,
+                    state_before: D3D12_RESOURCE_STATE_COMMON,
+                    state_after: D3D12_RESOURCE_STATE_RENDER_TARGET,
+                }],
+            );
+            cmd_list.ClearRenderTargetView(handle, clear_color.as_ptr(), &[]);
+            cmd_list.RSSetViewports(&[D3D12_VIEWPORT {
+                Width: self.size.width as _,
+                Height: self.size.height as _,
+                MaxDepth: 1.0,
+                ..Default::default()
+            }]);
+            cmd_list.RSSetScissorRects(&[RECT {
+                right: self.size.width as _,
+                bottom: self.size.height as _,
+                ..Default::default()
+            }]);
+            cmd_list.OMSetRenderTargets(rtvs.len() as _, rtvs.as_ptr(), false, std::ptr::null());
+        }
+    }
+
+    fn copy(&self, index: usize, cmd_list: &ID3D12GraphicsCommandList) {
+        unsafe {
+            let mut handle = self.desc_heap.GetGPUDescriptorHandleForHeapStart();
+            handle.ptr += (index * self.desc_size) as u64;
+            transition_barriers(
+                &cmd_list,
+                [TransitionBarrier {
+                    resource: self.buffers[index].handle().clone(),
+                    subresource: 0,
+                    state_before: D3D12_RESOURCE_STATE_RENDER_TARGET,
+                    state_after: D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE,
+                }],
+            );
+            cmd_list.SetDescriptorHeaps(&[Some(self.desc_heap.clone())]);
+            cmd_list.SetGraphicsRootSignature(&self.copy_texture.root_signature);
+            cmd_list.SetGraphicsRootDescriptorTable(0, handle);
+            cmd_list.SetPipelineState(&self.copy_texture.pipeline);
+            cmd_list.IASetVertexBuffers(0, &[self.copy_texture.plane.vbv.clone()]);
+            cmd_list.IASetIndexBuffer(&self.copy_texture.plane.ibv);
+            cmd_list.IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+            cmd_list.DrawIndexedInstanced(self.copy_texture.plane.indices_len() as _, 1, 0, 0, 0);
+            transition_barriers(
+                &cmd_list,
+                [TransitionBarrier {
+                    resource: self.buffers[index].handle().clone(),
+                    subresource: 0,
+                    state_before: D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE,
+                    state_after: D3D12_RESOURCE_STATE_COMMON,
+                }],
+            );
+        }
+    }
+}
+
+pub trait RenderUi {
+    fn render(&self, cmd: &mltg::DrawCommand);
+}
+
+struct Ui {
+    context: mltg::Context<mltg::Direct3D12>,
+    cmd_queue: CommandQueue,
+    desc_heap: ID3D12DescriptorHeap,
+    desc_size: usize,
+    buffers: Vec<(Texture2D, mltg::d3d12::RenderTarget)>,
+    copy_texture: CopyTextureShader,
+    signals: RefCell<Vec<Option<Signal>>>,
+    wait_event: Event,
+}
+
+impl Ui {
+    fn new(
+        device: &ID3D12Device,
+        count: usize,
+        window: &wita::Window,
+        copy_texture: CopyTextureShader,
+    ) -> anyhow::Result<Self> {
+        unsafe {
+            let size = window.inner_size();
+            let cmd_queue = CommandQueue::new(device, D3D12_COMMAND_LIST_TYPE_DIRECT)?;
+            cmd_queue.queue.SetName("Ui::cmd_queue::queue")?;
+            let context = mltg::Context::new(mltg::Direct3D12::new(device, &cmd_queue.queue)?)?;
+            context.set_dpi(window.dpi() as _);
+            let desc_heap: ID3D12DescriptorHeap =
+                device.CreateDescriptorHeap(&D3D12_DESCRIPTOR_HEAP_DESC {
+                    Type: D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV,
+                    NumDescriptors: count as _,
+                    Flags: D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE,
+                    ..Default::default()
+                })?;
+            desc_heap.SetName("Ui::desc_heap")?;
+            let desc_size = device
+                .GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV)
+                as usize;
+            let mut buffers = Vec::with_capacity(count);
+            Self::create_buffers(
+                device,
+                &context,
+                &desc_heap,
+                desc_size,
+                count,
+                size,
+                &mut buffers,
+            )?;
             let signals = RefCell::new(vec![None; count]);
             Ok(Self {
                 context,
@@ -728,9 +936,7 @@ impl Ui {
                 desc_heap,
                 desc_size,
                 buffers,
-                plane,
-                root_signature,
-                pipeline,
+                copy_texture,
                 signals,
                 wait_event: Event::new()?,
             })
@@ -763,13 +969,13 @@ impl Ui {
                 }],
             );
             cmd_list.SetDescriptorHeaps(&[Some(self.desc_heap.clone())]);
-            cmd_list.SetGraphicsRootSignature(&self.root_signature);
-            cmd_list.SetPipelineState(&self.pipeline);
+            cmd_list.SetGraphicsRootSignature(&self.copy_texture.root_signature);
+            cmd_list.SetPipelineState(&self.copy_texture.pipeline);
             cmd_list.SetGraphicsRootDescriptorTable(0, srv_handle);
-            cmd_list.IASetVertexBuffers(0, &[self.plane.vbv.clone()]);
-            cmd_list.IASetIndexBuffer(&self.plane.ibv);
+            cmd_list.IASetVertexBuffers(0, &[self.copy_texture.plane.vbv.clone()]);
+            cmd_list.IASetIndexBuffer(&self.copy_texture.plane.ibv);
             cmd_list.IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
-            cmd_list.DrawIndexedInstanced(self.plane.indices_len() as _, 1, 0, 0, 0);
+            cmd_list.DrawIndexedInstanced(self.copy_texture.plane.indices_len() as _, 1, 0, 0, 0);
             transition_barriers(
                 cmd_list,
                 [TransitionBarrier {
@@ -842,6 +1048,7 @@ impl Ui {
                         D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET
                             | D3D12_RESOURCE_FLAG_ALLOW_SIMULTANEOUS_ACCESS,
                     ),
+                    &[0.0, 0.0, 0.0, 0.0],
                 )?;
                 buffer.handle().SetName(format!("Ui::buffer[{}]", i))?;
                 let srv_desc = D3D12_SHADER_RESOURCE_VIEW_DESC {
@@ -868,51 +1075,62 @@ impl Ui {
 pub struct Renderer {
     d3d12_device: ID3D12Device,
     swap_chain: SwapChain,
+    render_target: RenderTarget,
     pixel_shader: PixelShader,
     cmd_allocators: Vec<ID3D12CommandAllocator>,
-    cmd_lists: Vec<ID3D12GraphicsCommandList>,
+    cmd_list: ID3D12GraphicsCommandList,
     wait_event: Event,
     signals: RefCell<Vec<Option<Signal>>>,
     ui: Ui,
 }
 
 impl Renderer {
+    const ALLOCATORS_PER_FRAME: usize = 2;
+    const BUFFER_COUNT: usize = 2;
+
     pub fn new(
         d3d12_device: &ID3D12Device,
         window: &wita::Window,
+        resolution: wita::PhysicalSize<u32>,
         compiler: &hlsl::Compiler,
         shader_model: hlsl::ShaderModel,
+        clear_color: &[f32; 4],
     ) -> anyhow::Result<Self> {
-        const BUFFER_COUNT: usize = 2;
         unsafe {
-            let swap_chain = SwapChain::new(d3d12_device, window, BUFFER_COUNT)?;
-            let mut cmd_allocators = Vec::with_capacity(4);
-            for i in 0..BUFFER_COUNT * 2 {
+            let swap_chain = SwapChain::new(d3d12_device, window, Self::BUFFER_COUNT)?;
+            let mut cmd_allocators =
+                Vec::with_capacity(Self::BUFFER_COUNT * Self::ALLOCATORS_PER_FRAME);
+            for i in 0..Self::BUFFER_COUNT * Self::ALLOCATORS_PER_FRAME {
                 let cmd_allocator: ID3D12CommandAllocator =
                     d3d12_device.CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT)?;
                 cmd_allocator.SetName(format!("Renderer::cmd_allocators[{}]", i))?;
                 cmd_allocators.push(cmd_allocator);
             }
-            let mut cmd_lists = Vec::with_capacity(2);
-            for i in 0..BUFFER_COUNT {
-                let cmd_list: ID3D12GraphicsCommandList = d3d12_device.CreateCommandList(
-                    0,
-                    D3D12_COMMAND_LIST_TYPE_DIRECT,
-                    &cmd_allocators[0],
-                    None,
-                )?;
-                cmd_list.SetName(format!("Renderer::cmd_lists[{}]", i))?;
-                cmd_list.Close()?;
-                cmd_lists.push(cmd_list);
-            }
+            let cmd_list: ID3D12GraphicsCommandList = d3d12_device.CreateCommandList(
+                0,
+                D3D12_COMMAND_LIST_TYPE_DIRECT,
+                &cmd_allocators[0],
+                None,
+            )?;
+            cmd_list.SetName(format!("Renderer::cmd_lists"))?;
+            cmd_list.Close()?;
+            let copy_texture = CopyTextureShader::new(&d3d12_device, compiler, shader_model)?;
+            let render_target = RenderTarget::new(
+                &d3d12_device,
+                resolution,
+                copy_texture.clone(),
+                Self::BUFFER_COUNT,
+                clear_color,
+            )?;
             let pixel_shader = PixelShader::new(&d3d12_device, compiler, shader_model)?;
-            let ui = Ui::new(&d3d12_device, BUFFER_COUNT, window, compiler, shader_model)?;
+            let ui = Ui::new(&d3d12_device, Self::BUFFER_COUNT, window, copy_texture)?;
             Ok(Self {
                 d3d12_device: d3d12_device.clone(),
                 swap_chain,
+                render_target,
                 pixel_shader,
                 cmd_allocators,
-                cmd_lists,
+                cmd_list,
                 wait_event: Event::new()?,
                 signals: RefCell::new(vec![None; 2]),
                 ui,
@@ -934,90 +1152,50 @@ impl Renderer {
     pub fn render(
         &self,
         interval: u32,
-        clear_color: &[f32],
+        clear_color: &[f32; 4],
         ps: Option<&PixelShaderPipeline>,
         parameters: Option<&Parameters>,
         r: &impl RenderUi,
     ) -> anyhow::Result<()> {
-        let swap_chain_desc = self.swap_chain.desc()?;
-        let (handle, back_buffer, index) = self.swap_chain.current_buffer();
+        let index = self.swap_chain.current_buffer();
         if let Some(signal) = self.signals.borrow_mut()[index].take() {
             if !signal.is_completed() {
                 signal.set_event(&self.wait_event)?;
                 self.wait_event.wait();
             }
         }
-        let cmd_allocators = &self.cmd_allocators[index * 2..=index * 2 + 1];
+        let current_index = index * Self::ALLOCATORS_PER_FRAME;
+        let cmd_allocators =
+            &self.cmd_allocators[current_index..current_index + Self::ALLOCATORS_PER_FRAME];
         unsafe {
-            let cmd_list = &self.cmd_lists[0];
             cmd_allocators[0].Reset()?;
-            cmd_list.Reset(&cmd_allocators[0], None)?;
-            transition_barriers(
-                cmd_list,
-                [TransitionBarrier {
-                    resource: back_buffer.clone(),
-                    subresource: 0,
-                    state_before: D3D12_RESOURCE_STATE_PRESENT,
-                    state_after: D3D12_RESOURCE_STATE_RENDER_TARGET,
-                }],
-            );
-            cmd_list.ClearRenderTargetView(handle, clear_color.as_ptr(), &[]);
-            cmd_list.RSSetViewports(&[D3D12_VIEWPORT {
-                Width: swap_chain_desc.Width as _,
-                Height: swap_chain_desc.Height as _,
-                MaxDepth: 1.0,
-                ..Default::default()
-            }]);
-            cmd_list.RSSetScissorRects(&[RECT {
-                right: swap_chain_desc.Width as _,
-                bottom: swap_chain_desc.Height as _,
-                ..Default::default()
-            }]);
-            let rtvs = [handle.clone()];
-            cmd_list.OMSetRenderTargets(rtvs.len() as _, rtvs.as_ptr(), false, std::ptr::null());
+            self.cmd_list.Reset(&cmd_allocators[0], None)?;
+            self.render_target
+                .set_target(index, &self.cmd_list, clear_color);
             if let Some(ps) = ps {
                 if let Some(parameters) = parameters {
-                    self.pixel_shader.execute(&cmd_list, ps, parameters);
+                    self.pixel_shader.execute(&self.cmd_list, ps, parameters);
                 }
             }
-            cmd_list.Close()?;
+            self.swap_chain.begin(index, &self.cmd_list, clear_color);
+            self.swap_chain.set_target(index, &self.cmd_list);
+            self.render_target.copy(index, &self.cmd_list);
+            self.cmd_list.Close()?;
             self.swap_chain
                 .cmd_queue
-                .execute_command_lists(&[Some(cmd_list.cast().unwrap())])?;
-        }
-        unsafe {
-            let cmd_list = &self.cmd_lists[1];
+                .execute_command_lists(&[Some(self.cmd_list.cast().unwrap())])?;
+
             cmd_allocators[1].Reset()?;
-            cmd_list.Reset(&cmd_allocators[1], None)?;
-            cmd_list.RSSetViewports(&[D3D12_VIEWPORT {
-                Width: swap_chain_desc.Width as _,
-                Height: swap_chain_desc.Height as _,
-                MaxDepth: 1.0,
-                ..Default::default()
-            }]);
-            cmd_list.RSSetScissorRects(&[RECT {
-                right: swap_chain_desc.Width as _,
-                bottom: swap_chain_desc.Height as _,
-                ..Default::default()
-            }]);
-            let rtvs = [handle.clone()];
-            cmd_list.OMSetRenderTargets(rtvs.len() as _, rtvs.as_ptr(), false, std::ptr::null());
-            self.ui.copy(index, cmd_list);
-            transition_barriers(
-                cmd_list,
-                [TransitionBarrier {
-                    resource: back_buffer.clone(),
-                    subresource: 0,
-                    state_before: D3D12_RESOURCE_STATE_RENDER_TARGET,
-                    state_after: D3D12_RESOURCE_STATE_PRESENT,
-                }],
-            );
-            cmd_list.Close()?;
+            self.cmd_list.Reset(&cmd_allocators[1], None)?;
+            self.swap_chain.set_target(index, &self.cmd_list);
+            self.ui.copy(index, &self.cmd_list);
+            self.swap_chain.end(index, &self.cmd_list);
+            self.cmd_list.Close()?;
             let ui_signal = self.ui.render(index, r)?;
             self.swap_chain.cmd_queue.wait(&ui_signal)?;
             self.swap_chain
                 .cmd_queue
-                .execute_command_lists(&[Some(cmd_list.cast().unwrap())])?;
+                .execute_command_lists(&[Some(self.cmd_list.cast().unwrap())])?;
         }
         let signal = self.swap_chain.present(interval)?;
         self.signals.borrow_mut()[index] = Some(signal);

@@ -214,6 +214,7 @@ impl Texture2D {
         init_state: D3D12_RESOURCE_STATES,
         heap_flags: Option<D3D12_HEAP_FLAGS>,
         flags: Option<D3D12_RESOURCE_FLAGS>,
+        clear_color: &[f32; 4],
     ) -> anyhow::Result<Self> {
         let heap_props = HeapProperties::new(D3D12_HEAP_TYPE_DEFAULT);
         let desc = D3D12_RESOURCE_DESC {
@@ -239,7 +240,7 @@ impl Texture2D {
                     &D3D12_CLEAR_VALUE {
                         Format: desc.Format,
                         Anonymous: D3D12_CLEAR_VALUE_0 {
-                            Color: [0.0, 0.0, 0.0, 0.0],
+                            Color: clear_color.clone(),
                         },
                     },
                     &mut resource,

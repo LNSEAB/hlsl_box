@@ -6,9 +6,9 @@ edition = "2021"
 [dependencies]
 coinit = "0.1.2"
 thiserror = "1.0.30"
-wita = "0.13.2"
+wita = "0.14.0"
 ifdlg = { git = "https://github.com/LNSEAB/ifdlg" }
-libc = "0.2.123"
+libc = "0.2.124"
 anyhow = { version = "1.0.56", features = ["backtrace"] }
 mltg = "0.8.1"
 tracing = "0.1.34"

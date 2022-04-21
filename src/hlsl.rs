@@ -292,29 +292,30 @@ impl Compiler {
 mod tests {
     use super::*;
 
+    const DATA_PATH: &'static str = "src/shader/copy_texture.hlsl";
+    const DATA: &'static str = include_str!("shader/copy_texture.hlsl");
+
     #[test]
     fn compile_from_str() {
         let compiler = Compiler::new().unwrap();
-        let data = include_str!("shader/test.hlsl");
         let version = ShaderModel::specify("6_0").unwrap();
         compiler
-            .compile_from_str(data, "vs_main", Target::VS(version), &[])
+            .compile_from_str(DATA, "vs_main", Target::VS(version), &[])
             .unwrap();
         compiler
-            .compile_from_str(data, "ps_main", Target::PS(version), &[])
+            .compile_from_str(DATA, "ps_main", Target::PS(version), &[])
             .unwrap();
     }
 
     #[test]
     fn compile_from_file() {
         let compiler = Compiler::new().unwrap();
-        let path = "src/shader/test.hlsl";
         let version = ShaderModel::specify("6_0").unwrap();
         compiler
-            .compile_from_file(path, "vs_main", Target::VS(version), &[])
+            .compile_from_file(DATA_PATH, "vs_main", Target::VS(version), &[])
             .unwrap();
         compiler
-            .compile_from_file(path, "ps_main", Target::PS(version), &[])
+            .compile_from_file(DATA_PATH, "ps_main", Target::PS(version), &[])
             .unwrap();
     }
 

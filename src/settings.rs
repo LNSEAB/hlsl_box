@@ -5,18 +5,31 @@ use std::path::Path;
 
 const DEFAULT_SETTINGS: &'static str = include_str!("default_settings.toml");
 
-#[derive(Debug, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, PartialEq, Eq, Debug, serde::Serialize, serde::Deserialize)]
+#[serde(into = "[u32; 2]")]
 pub struct Version {
     pub major: u32,
     pub minor: u32,
 }
 
-#[derive(Debug, serde::Serialize, serde::Deserialize)]
+impl From<Version> for [u32; 2] {
+    fn from(src: Version) -> Self {
+        [src.major, src.minor]
+    }
+}
+
+impl std::fmt::Display for Version {
+    fn fmt(&self, fmt: &mut std::fmt::Formatter) -> std::fmt::Result {
+        write!(fmt, "{}.{}", self.major, self.minor)
+    }
+}
+
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct General {
     pub version: Version,
 }
 
-#[derive(Debug, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct Window {
     pub x: i32,
     pub y: i32,
@@ -24,14 +37,26 @@ pub struct Window {
     pub height: u32,
 }
 
-#[derive(Debug, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+pub struct Resolution {
+    pub width: u32,
+    pub height: u32,
+}
+
+impl From<Resolution> for wita::PhysicalSize<u32> {
+    fn from(src: Resolution) -> Self {
+        Self::new(src.width, src.height)
+    }
+}
+
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct Shader {
     pub version: Option<String>,
     pub vs_args: Vec<String>,
     pub ps_args: Vec<String>,
 }
 
-#[derive(Debug, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct Appearance {
     pub clear_color: [f32; 3],
     pub font: String,
@@ -40,7 +65,9 @@ pub struct Appearance {
 
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
 pub struct Settings {
+    pub general: General,
     pub window: Window,
+    pub resolution: Resolution,
     pub shader: Shader,
     pub appearance: Appearance,
 }

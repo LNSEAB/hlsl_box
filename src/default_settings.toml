@@ -7,6 +7,10 @@ y = 0
 width = 1024
 height = 768
 
+[resolution]
+width = 640 
+height = 480 
+
 [shader]
 vs_args = []
 ps_args = []

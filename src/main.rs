@@ -8,7 +8,9 @@ mod settings;
 mod utility;
 mod window;
 
-use std::sync::{mpsc, Arc};
+use std::cell::RefCell;
+use std::rc::Rc;
+use std::sync::Arc;
 use tracing::{debug, error, info};
 
 use application::Application;
@@ -56,7 +58,8 @@ fn main() {
         error!("panic: {}", msg);
     }));
     let _coinit = coinit::init(coinit::APARTMENTTHREADED | coinit::DISABLE_OLE1DDE).unwrap();
-    let (th_tx, th_rx) = mpsc::channel();
+    let th_handle = Rc::new(RefCell::new(None));
+    let th_handle_f = th_handle.clone();
     info!("start");
     let f = move || -> anyhow::Result<Window> {
         let settings = Arc::new(Settings::load(SETTINGS_PATH)?);
@@ -73,12 +76,12 @@ fn main() {
             }
             info!("end rendering thread");
         });
-        th_tx.send(th).ok();
+        *th_handle_f.borrow_mut() = Some(th);
         Ok(window)
     };
     if let Err(e) = wita::run(wita::RunType::Wait, f) {
         error!("{}", e);
     }
-    th_rx.recv().unwrap().join().unwrap();
+    th_handle.borrow_mut().take().unwrap().join().unwrap();
     info!("end");
 }
