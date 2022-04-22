@@ -196,21 +196,9 @@ enum State {
     Error(ErrorMessage),
 }
 
-struct View {
-    state: State,
-}
-
-impl View {
-    fn new() -> anyhow::Result<Self> {
-        Ok(Self {
-            state: State::Init,
-        })
-    }
-}
-
-impl RenderUi for View {
+impl RenderUi for State {
     fn render(&self, cmd: &mltg::DrawCommand) {
-        match &self.state {
+        match &self {
             State::Init => {}
             State::Rendering(r) => {
                 r.frame_counter.update().unwrap();
@@ -236,7 +224,7 @@ pub struct Application {
     mouse: [f32; 2],
     start_time: std::time::Instant,
     dir: Option<DirMonitor>,
-    view: View,
+    state: State,
     ui_props: UiProperties,
     show_frame_counter: Rc<Cell<bool>>,
 }
@@ -289,7 +277,6 @@ impl Application {
             text_color,
             bg_color,
         };
-        let view = View::new()?;
         let show_frame_counter = Rc::new(Cell::new(settings.frame_counter));
         Ok(Self {
             _d3d12_device: d3d12_device,
@@ -302,7 +289,7 @@ impl Application {
             mouse: [0.0, 0.0],
             start_time: std::time::Instant::now(),
             dir: None,
-            view,
+            state: State::Init,
             ui_props,
             show_frame_counter,
         })
@@ -325,7 +312,7 @@ impl Application {
         };
         let frame_counter = FrameCounter::new(&self.ui_props)?;
         self.renderer.wait_all_signals();
-        self.view.state = State::Rendering(Rendering {
+        self.state = State::Rendering(Rendering {
             path: path.to_path_buf(),
             parameters,
             ps,
@@ -374,7 +361,7 @@ impl Application {
                 }
                 Ok(WindowEvent::Wheel(d)) => {
                     debug!("WindowEvent::Wheel");
-                    if let State::Error(em) = &mut self.view.state {
+                    if let State::Error(em) = &mut self.state {
                         let main_window = &self.window_receiver.main_window;
                         let dpi = main_window.dpi();
                         let size = main_window.inner_size().to_logical(dpi).cast::<f32>();
@@ -417,7 +404,7 @@ impl Application {
                 _ => {}
             }
             if let Some(path) = self.dir.as_ref().and_then(|dir| dir.try_recv()) {
-                if let State::Rendering(r) = &self.view.state {
+                if let State::Rendering(r) = &self.state {
                     if r.path == path {
                         if let Err(e) = self.load_file(&path) {
                             self.set_error(e)?;
@@ -425,24 +412,24 @@ impl Application {
                     }
                 }
             }
-            if let State::Rendering(r) = &mut self.view.state {
+            if let State::Rendering(r) = &mut self.state {
                 r.parameters.mouse = {
                     let cursor_position = self.window_receiver.cursor_position.lock().unwrap();
                     [cursor_position.x as _, cursor_position.y as _]
                 };
                 r.parameters.time = (std::time::Instant::now() - self.start_time).as_secs_f32();
             }
-            let ret = match &self.view.state {
+            let ret = match &self.state {
                 State::Rendering(r) => self.renderer.render(
                     1,
                     &self.clear_color,
                     Some(&r.ps),
                     Some(&r.parameters),
-                    &self.view,
+                    &self.state,
                 ),
                 _ => self
                     .renderer
-                    .render(1, &self.clear_color, None, None, &self.view),
+                    .render(1, &self.clear_color, None, None, &self.state),
             };
             if let Err(e) = ret {
                 error!("render: {}", e);
@@ -459,7 +446,7 @@ impl Application {
             .inner_size()
             .to_logical(dpi)
             .cast::<f32>();
-        self.view.state = State::Error(ErrorMessage::new(
+        self.state = State::Error(ErrorMessage::new(
             &format!("{}", e),
             &self.ui_props,
             [size.width, size.height].into(),
