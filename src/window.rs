@@ -71,7 +71,7 @@ impl Window {
         key_map: KeyboardMap,
     ) -> anyhow::Result<(Self, WindowReceiver)> {
         let main_window = wita::Window::builder()
-            .title("HLSLBox")
+            .title(TITLE)
             .position(wita::ScreenPosition::new(
                 settings.window.x,
                 settings.window.y,
@@ -137,7 +137,9 @@ impl wita::EventHandler for Window {
     fn mouse_wheel(&mut self, ev: wita::event::MouseWheel) {
         if ev.window == &self.main_window {
             if ev.axis == wita::MouseWheelAxis::Vertical {
-                self.event.send(WindowEvent::Wheel(-ev.distance / wita::WHEEL_DELTA)).ok();
+                self.event
+                    .send(WindowEvent::Wheel(-ev.distance / wita::WHEEL_DELTA))
+                    .ok();
             }
         }
     }

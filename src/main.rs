@@ -21,6 +21,7 @@ use utility::*;
 use window::*;
 
 const SETTINGS_PATH: &str = "./settings.toml";
+const TITLE: &str = "HLSL Box";
 
 fn logger() {
     use std::fs::File;
@@ -55,18 +56,28 @@ fn main() {
     std::panic::set_hook(Box::new(|info| unsafe {
         use windows::Win32::Foundation::HWND;
         use windows::Win32::UI::WindowsAndMessaging::*;
-        match info.payload().downcast_ref::<&str>() {
-            Some(&msg) => {
+
+        let args = std::env::args().collect::<Vec<_>>();
+        match info.payload().downcast_ref::<String>() {
+            Some(msg) => {
                 let s = match info.location() {
                     Some(loc) => format!("{} ({}:{})", msg, loc.file(), loc.line()),
                     None => msg.to_string(),
                 };
-                MessageBoxW(HWND(0), s.as_str(), "HLSLBox", MB_OK | MB_ICONERROR);
+                if !args.iter().any(|arg| arg == "--nomodal") {
+                    MessageBoxW(
+                        HWND(0),
+                        s.as_str(),
+                        TITLE,
+                        MB_OK | MB_ICONERROR | MB_SYSTEMMODAL,
+                    );
+                }
                 error!("panic: {}", s);
-            },
-            None => {
-                error!("panic: unknown error");
             }
+            None => match info.location() {
+                Some(loc) => error!("panic: unknown error ({}:{})", loc.file(), loc.line()),
+                None => error!("panic: unknown error"),
+            },
         };
     }));
     let _coinit = coinit::init(coinit::APARTMENTTHREADED | coinit::DISABLE_OLE1DDE).unwrap();
