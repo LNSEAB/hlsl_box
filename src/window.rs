@@ -1,11 +1,11 @@
+use crate::application::Method;
 use crate::*;
-use std::path::PathBuf;
-use std::sync::Arc;
-use std::sync::*;
+use std::{collections::HashMap, path::PathBuf, sync::*};
 
 pub enum WindowEvent {
     LoadFile(PathBuf),
     Resized(wita::PhysicalSize<u32>),
+    KeyInput(Method),
     DpiChanged(u32),
     Closed {
         position: wita::ScreenPosition,
@@ -19,15 +19,56 @@ pub struct WindowReceiver {
     pub cursor_position: Arc<Mutex<wita::PhysicalPosition<i32>>>,
 }
 
+pub struct KeyboardMap(HashMap<Vec<wita::VirtualKey>, Method>);
+
+impl KeyboardMap {
+    pub fn new() -> Self {
+        Self(HashMap::new())
+    }
+
+    pub fn insert(&mut self, keys: Vec<wita::VirtualKey>, v: Method) {
+        let mut special_key = |sk, l, r| {
+            if let Some(p) = keys.iter().position(|k| k == &sk) {
+                let mut tmp = keys.clone();
+                tmp[p] = l;
+                self.0.insert(tmp.clone(), v);
+                tmp[p] = r;
+                self.0.insert(tmp, v);
+            }
+        };
+        special_key(
+            wita::VirtualKey::Ctrl,
+            wita::VirtualKey::LCtrl,
+            wita::VirtualKey::RCtrl,
+        );
+        special_key(
+            wita::VirtualKey::Alt,
+            wita::VirtualKey::LAlt,
+            wita::VirtualKey::RAlt,
+        );
+        special_key(
+            wita::VirtualKey::Shift,
+            wita::VirtualKey::LShift,
+            wita::VirtualKey::RShift,
+        );
+        self.0.insert(keys, v);
+    }
+}
+
 pub struct Window {
     settings: Arc<Settings>,
     main_window: wita::Window,
     event: mpsc::Sender<WindowEvent>,
     cursor_position: Arc<Mutex<wita::PhysicalPosition<i32>>>,
+    key_map: KeyboardMap,
+    keys: Vec<wita::VirtualKey>,
 }
 
 impl Window {
-    pub fn new(settings: Arc<Settings>) -> anyhow::Result<(Self, WindowReceiver)> {
+    pub fn new(
+        settings: Arc<Settings>,
+        key_map: KeyboardMap,
+    ) -> anyhow::Result<(Self, WindowReceiver)> {
         let main_window = wita::Window::builder()
             .title("HLSLBox")
             .position(wita::ScreenPosition::new(
@@ -48,6 +89,8 @@ impl Window {
                 main_window: main_window.clone(),
                 event: tx,
                 cursor_position: cursor_position.clone(),
+                key_map,
+                keys: Vec::with_capacity(5),
             },
             WindowReceiver {
                 main_window,
@@ -61,16 +104,25 @@ impl Window {
 impl wita::EventHandler for Window {
     fn key_input(&mut self, ev: wita::event::KeyInput) {
         if ev.window == &self.main_window {
-            let ctrl = wita::get_key_state(wita::VirtualKey::Ctrl);
-            let released = ev.state == wita::KeyState::Released;
-            let o = ev.key_code.vkey == wita::VirtualKey::Char('O');
-            if ctrl && released && o {
-                let dialog = ifdlg::FileOpenDialog::new();
-                if let Ok(Some(path)) = dialog.show::<PathBuf>() {
-                    debug!("open dialog: {}", path.display());
-                    self.event.send(WindowEvent::LoadFile(path)).ok();
+            if ev.state == wita::KeyState::Released {
+                wita::keyboard_state(&mut self.keys);
+                self.keys.retain(|k| {
+                    if let wita::VirtualKey::Other(a) = k {
+                        *a < 240
+                    } else {
+                        let ctrl = k == &wita::VirtualKey::Ctrl;
+                        let alt = k == &wita::VirtualKey::Alt;
+                        let shift = k == &wita::VirtualKey::Shift;
+                        !(ctrl || alt || shift)
+                    }
+                });
+                self.keys.push(ev.key_code.vkey);
+                debug!("keys: {:?}", &self.keys);
+                if let Some(m) = self.key_map.0.get(&self.keys) {
+                    self.event.send(WindowEvent::KeyInput(m.clone())).ok();
                 }
             }
+            debug!("main_window key_input");
         }
     }
 

@@ -25,11 +25,6 @@ impl std::fmt::Display for Version {
 }
 
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
-pub struct General {
-    pub version: Version,
-}
-
-#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct Window {
     pub x: i32,
     pub y: i32,
@@ -67,7 +62,8 @@ pub struct Appearance {
 
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
 pub struct Settings {
-    pub general: General,
+    pub version: Version,
+    pub frame_counter: bool,
     pub window: Window,
     pub resolution: Resolution,
     pub shader: Shader,

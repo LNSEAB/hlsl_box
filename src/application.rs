@@ -1,7 +1,14 @@
 use crate::*;
 use std::cell::Cell;
 use std::path::{Path, PathBuf};
+use std::rc::Rc;
 use windows::Win32::Graphics::{Direct3D::*, Direct3D12::*};
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum Method {
+    OpenDialog,
+    FrameCounter,
+}
 
 #[derive(Clone)]
 struct UiProperties {
@@ -83,6 +90,7 @@ struct Rendering {
     parameters: Parameters,
     ps: PixelShaderPipeline,
     frame_counter: FrameCounter,
+    show_frame_counter: Rc<Cell<bool>>,
 }
 
 struct ErrorMessage {
@@ -114,7 +122,9 @@ impl RenderUi for View {
         match &self.state {
             State::Rendering(r) => {
                 r.frame_counter.update().unwrap();
-                r.frame_counter.draw(cmd, [10.0, 10.0]);
+                if r.show_frame_counter.get() {
+                    r.frame_counter.draw(cmd, [10.0, 10.0]);
+                }
             }
             State::Error(e) => {
                 let mut h = 0.0;
@@ -155,6 +165,7 @@ pub struct Application {
     dir: Option<DirMonitor>,
     view: View,
     ui_props: UiProperties,
+    show_frame_counter: Rc<Cell<bool>>,
 }
 
 impl Application {
@@ -170,7 +181,7 @@ impl Application {
             }
             info!("enable debug layer");
         }
-        info!("settings version: {}", settings.general.version);
+        info!("settings version: {}", settings.version);
         let d3d12_device: ID3D12Device = unsafe {
             let mut device = None;
             D3D12CreateDevice(None, D3D_FEATURE_LEVEL_12_1, &mut device).map(|_| device.unwrap())?
@@ -206,6 +217,7 @@ impl Application {
             bg_color,
         };
         let view = View::new(&ui_props)?;
+        let show_frame_counter = Rc::new(Cell::new(settings.frame_counter));
         Ok(Self {
             _d3d12_device: d3d12_device,
             settings,
@@ -219,6 +231,7 @@ impl Application {
             dir: None,
             view,
             ui_props,
+            show_frame_counter,
         })
     }
 
@@ -244,6 +257,7 @@ impl Application {
             parameters,
             ps,
             frame_counter,
+            show_frame_counter: self.show_frame_counter.clone(),
         });
         self.start_time = std::time::Instant::now();
         self.dir = Some(DirMonitor::new(path.parent().unwrap())?);
@@ -266,6 +280,31 @@ impl Application {
                         error!("{}", e);
                     }
                 }
+                Ok(WindowEvent::KeyInput(m)) => {
+                    debug!("WindowEvent::KeyInput");
+                    match m {
+                        Method::OpenDialog => {
+                            let dlg = ifdlg::FileOpenDialog::new();
+                            match dlg.show::<PathBuf>() {
+                                Ok(Some(path)) => {
+                                    if let Err(e) = self.load_file(&path) {
+                                        self.view.state = State::Error(ErrorMessage {
+                                            msg: format!("{}", e),
+                                        });
+                                        error!("{}", e);
+                                    }
+                                }
+                                Err(e) => {
+                                    error!("open dialog: {}", e);
+                                }
+                                _ => {}
+                            }
+                        }
+                        Method::FrameCounter => {
+                            self.show_frame_counter.set(!self.show_frame_counter.get());
+                        }
+                    }
+                }
                 Ok(WindowEvent::Resized(size)) => {
                     debug!("WindowEvent::Resized");
                     if let Err(e) = self.renderer.resize(size) {
@@ -281,7 +320,8 @@ impl Application {
                 Ok(WindowEvent::Closed { position, size }) => {
                     debug!("WindowEvent::Closed");
                     let settings = Settings {
-                        general: self.settings.general.clone(),
+                        version: self.settings.version.clone(),
+                        frame_counter: self.show_frame_counter.get(),
                         window: settings::Window {
                             x: position.x,
                             y: position.y,

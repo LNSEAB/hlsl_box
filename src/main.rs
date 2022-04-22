@@ -13,7 +13,7 @@ use std::rc::Rc;
 use std::sync::Arc;
 use tracing::{debug, error, info};
 
-use application::Application;
+use application::{Application, Method};
 use monitor::*;
 use renderer::*;
 use settings::Settings;
@@ -63,7 +63,16 @@ fn main() {
     info!("start");
     let f = move || -> anyhow::Result<Window> {
         let settings = Arc::new(Settings::load(SETTINGS_PATH)?);
-        let (window, window_receiver) = Window::new(settings.clone()).unwrap();
+        let mut key_map = KeyboardMap::new();
+        key_map.insert(
+            vec![wita::VirtualKey::Ctrl, wita::VirtualKey::Char('O')],
+            Method::OpenDialog,
+        );
+        key_map.insert(
+            vec![wita::VirtualKey::Ctrl, wita::VirtualKey::Char('F')],
+            Method::FrameCounter,
+        );
+        let (window, window_receiver) = Window::new(settings.clone(), key_map).unwrap();
         let th_settings = settings.clone();
         let th = std::thread::spawn(move || {
             info!("start rendering thread");
@@ -72,7 +81,7 @@ fn main() {
             let app = Application::new(th_settings, window_receiver).and_then(|mut app| app.run());
             if let Err(e) = app {
                 main_window.close();
-                panic!("{}\n{}", e, e.backtrace());
+                panic!("{}", e);
             }
             info!("end rendering thread");
         });
@@ -80,7 +89,7 @@ fn main() {
         Ok(window)
     };
     if let Err(e) = wita::run(wita::RunType::Wait, f) {
-        error!("{}", e);
+        error!("{}\n{}", e, e.backtrace());
     }
     th_handle.borrow_mut().take().unwrap().join().unwrap();
     info!("end");

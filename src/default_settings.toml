@@ -1,5 +1,5 @@
-[general]
 version = [1, 0]
+frame_counter = true
 
 [window]
 x = 0
