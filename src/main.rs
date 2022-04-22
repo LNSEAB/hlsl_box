@@ -26,12 +26,17 @@ fn logger() {
     use std::fs::File;
     use tracing_subscriber::{filter::LevelFilter, prelude::*};
 
+    let filter = if cfg!(debug_assertions) {
+        LevelFilter::DEBUG
+    } else {
+        LevelFilter::INFO
+    };
     let file = tracing_subscriber::fmt::layer()
         .compact()
         .with_writer(Arc::new(File::create("hlsl_box.log").unwrap()))
         .with_ansi(false)
         .with_line_number(true)
-        .with_filter(LevelFilter::DEBUG);
+        .with_filter(filter);
     let console = tracing_subscriber::fmt::layer()
         .compact()
         .with_line_number(true)
@@ -50,12 +55,19 @@ fn main() {
     std::panic::set_hook(Box::new(|info| unsafe {
         use windows::Win32::Foundation::HWND;
         use windows::Win32::UI::WindowsAndMessaging::*;
-        let msg = match info.payload().downcast_ref::<&str>() {
-            Some(msg) => msg,
-            None => "unknown error",
+        match info.payload().downcast_ref::<&str>() {
+            Some(&msg) => {
+                let s = match info.location() {
+                    Some(loc) => format!("{} ({}:{})", msg, loc.file(), loc.line()),
+                    None => msg.to_string(),
+                };
+                MessageBoxW(HWND(0), s.as_str(), "HLSLBox", MB_OK | MB_ICONERROR);
+                error!("panic: {}", s);
+            },
+            None => {
+                error!("panic: unknown error");
+            }
         };
-        MessageBoxW(HWND(0), msg, "HLSLBox", MB_OK | MB_ICONERROR);
-        error!("panic: {}", msg);
     }));
     let _coinit = coinit::init(coinit::APARTMENTTHREADED | coinit::DISABLE_OLE1DDE).unwrap();
     let th_handle = Rc::new(RefCell::new(None));
@@ -91,6 +103,6 @@ fn main() {
     if let Err(e) = wita::run(wita::RunType::Wait, f) {
         error!("{}\n{}", e, e.backtrace());
     }
-    th_handle.borrow_mut().take().unwrap().join().unwrap();
+    th_handle.borrow_mut().take().unwrap().join().ok();
     info!("end");
 }

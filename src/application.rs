@@ -1,7 +1,10 @@
 use crate::*;
-use std::cell::Cell;
-use std::path::{Path, PathBuf};
-use std::rc::Rc;
+use std::{
+    cell::Cell,
+    collections::VecDeque,
+    path::{Path, PathBuf},
+    rc::Rc,
+};
 use windows::Win32::Graphics::{Direct3D::*, Direct3D12::*};
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -94,7 +97,97 @@ struct Rendering {
 }
 
 struct ErrorMessage {
-    msg: String,
+    ui_props: UiProperties,
+    text: Vec<String>,
+    layouts: VecDeque<mltg::TextLayout>,
+    current_line: u32,
+}
+
+impl ErrorMessage {
+    fn new(text: &str, ui_props: &UiProperties, size: mltg::Size) -> anyhow::Result<Self> {
+        let text = text.split('\n').map(|t| t.to_string()).collect::<Vec<_>>();
+        let mut layouts = VecDeque::new();
+        let mut index = 0;
+        let mut height = 0.0;
+        while index < text.len() && height < size.height {
+            let layout = ui_props.factory.create_text_layout(
+                &text[index],
+                &ui_props.text_format,
+                mltg::TextAlignment::Leading,
+                None,
+            )?;
+            height += layout.size().height;
+            index += 1;
+            layouts.push_back(layout);
+        }
+        Ok(Self {
+            ui_props: ui_props.clone(),
+            text,
+            layouts,
+            current_line: 0,
+        })
+    }
+
+    fn offset(&mut self, size: mltg::Size, d: i32) -> anyhow::Result<()> {
+        let mut line = self.current_line;
+        if d < 0 {
+            let d = d.abs() as u32;
+            if line <= d {
+                line = 0;
+            } else {
+                line -= d;
+            }
+        } else {
+            line = (line + d as u32).min(self.text.len() as u32 - 1);
+        }
+        if self.current_line == line {
+            return Ok(());
+        }
+        if self.current_line > line {
+            let mut index = self.current_line as isize - 1;
+            while index >= line as _ {
+                let layout = self.ui_props.factory.create_text_layout(
+                    &self.text[index as usize],
+                    &self.ui_props.text_format,
+                    mltg::TextAlignment::Leading,
+                    None,
+                )?;
+                self.layouts.push_front(layout);
+                index -= 1;
+            }
+            let mut height = self.layouts.iter().fold(0.0, |h, l| h + l.size().height);
+            while height - self.layouts.back().unwrap().size().height > size.height {
+                let layout = self.layouts.pop_back().unwrap();
+                height -= layout.size().height;
+            }
+        } else {
+            let mut height = self.layouts.iter().fold(0.0, |h, l| h + l.size().height);
+            let d = line - self.current_line;
+            self.layouts.drain(..d as usize);
+            let mut index = line as usize + self.layouts.len();
+            while index < self.text.len() && height < size.height {
+                let layout = self.ui_props.factory.create_text_layout(
+                    &self.text[index],
+                    &self.ui_props.text_format,
+                    mltg::TextAlignment::Leading,
+                    None,
+                )?;
+                height += layout.size().height;
+                index += 1;
+                self.layouts.push_back(layout);
+            }
+        }
+        self.current_line = line;
+        Ok(())
+    }
+
+    fn draw(&self, cmd: &mltg::DrawCommand) {
+        let mut y = 0.0;
+        for layout in &self.layouts {
+            cmd.draw_text_layout(&layout, &self.ui_props.text_color, [0.0, y]);
+            y += layout.size().height;
+        }
+    }
 }
 
 enum State {
@@ -104,14 +197,12 @@ enum State {
 }
 
 struct View {
-    ui_props: UiProperties,
     state: State,
 }
 
 impl View {
-    fn new(ui_props: &UiProperties) -> anyhow::Result<Self> {
+    fn new() -> anyhow::Result<Self> {
         Ok(Self {
-            ui_props: ui_props.clone(),
             state: State::Init,
         })
     }
@@ -120,6 +211,7 @@ impl View {
 impl RenderUi for View {
     fn render(&self, cmd: &mltg::DrawCommand) {
         match &self.state {
+            State::Init => {}
             State::Rendering(r) => {
                 r.frame_counter.update().unwrap();
                 if r.show_frame_counter.get() {
@@ -127,27 +219,8 @@ impl RenderUi for View {
                 }
             }
             State::Error(e) => {
-                let mut h = 0.0;
-                for line in e.msg.split('\n') {
-                    let layout = self.ui_props.factory.create_text_layout(
-                        line,
-                        &self.ui_props.text_format,
-                        mltg::TextAlignment::Leading,
-                        None,
-                    );
-                    let layout = match layout {
-                        Ok(layout) => layout,
-                        Err(e) => {
-                            error!("{}", e);
-                            break;
-                        }
-                    };
-                    let size = layout.size();
-                    cmd.draw_text_layout(&layout, &self.ui_props.text_color, [0.0, h as _]);
-                    h += size.height;
-                }
+                e.draw(cmd);
             }
-            _ => {}
         }
     }
 }
@@ -216,7 +289,7 @@ impl Application {
             text_color,
             bg_color,
         };
-        let view = View::new(&ui_props)?;
+        let view = View::new()?;
         let show_frame_counter = Rc::new(Cell::new(settings.frame_counter));
         Ok(Self {
             _d3d12_device: d3d12_device,
@@ -274,10 +347,7 @@ impl Application {
                 Ok(WindowEvent::LoadFile(path)) => {
                     debug!("WindowEvent::LoadFile");
                     if let Err(e) = self.load_file(&path) {
-                        self.view.state = State::Error(ErrorMessage {
-                            msg: format!("{}", e),
-                        });
-                        error!("{}", e);
+                        self.set_error(e)?;
                     }
                 }
                 Ok(WindowEvent::KeyInput(m)) => {
@@ -288,10 +358,7 @@ impl Application {
                             match dlg.show::<PathBuf>() {
                                 Ok(Some(path)) => {
                                     if let Err(e) = self.load_file(&path) {
-                                        self.view.state = State::Error(ErrorMessage {
-                                            msg: format!("{}", e),
-                                        });
-                                        error!("{}", e);
+                                        self.set_error(e)?;
                                     }
                                 }
                                 Err(e) => {
@@ -303,6 +370,15 @@ impl Application {
                         Method::FrameCounter => {
                             self.show_frame_counter.set(!self.show_frame_counter.get());
                         }
+                    }
+                }
+                Ok(WindowEvent::Wheel(d)) => {
+                    debug!("WindowEvent::Wheel");
+                    if let State::Error(em) = &mut self.view.state {
+                        let main_window = &self.window_receiver.main_window;
+                        let dpi = main_window.dpi();
+                        let size = main_window.inner_size().to_logical(dpi).cast::<f32>();
+                        em.offset([size.width, size.height].into(), d)?;
                     }
                 }
                 Ok(WindowEvent::Resized(size)) => {
@@ -344,10 +420,7 @@ impl Application {
                 if let State::Rendering(r) = &self.view.state {
                     if r.path == path {
                         if let Err(e) = self.load_file(&path) {
-                            self.view.state = State::Error(ErrorMessage {
-                                msg: format!("{}", e),
-                            });
-                            error!("{}", e);
+                            self.set_error(e)?;
                         }
                     }
                 }
@@ -375,6 +448,23 @@ impl Application {
                 error!("render: {}", e);
             }
         }
+        Ok(())
+    }
+
+    fn set_error(&mut self, e: anyhow::Error) -> anyhow::Result<()> {
+        let dpi = self.window_receiver.main_window.dpi();
+        let size = self
+            .window_receiver
+            .main_window
+            .inner_size()
+            .to_logical(dpi)
+            .cast::<f32>();
+        self.view.state = State::Error(ErrorMessage::new(
+            &format!("{}", e),
+            &self.ui_props,
+            [size.width, size.height].into(),
+        )?);
+        error!("{}", e);
         Ok(())
     }
 }

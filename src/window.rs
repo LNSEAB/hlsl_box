@@ -7,6 +7,7 @@ pub enum WindowEvent {
     Resized(wita::PhysicalSize<u32>),
     KeyInput(Method),
     DpiChanged(u32),
+    Wheel(i32),
     Closed {
         position: wita::ScreenPosition,
         size: wita::PhysicalSize<u32>,
@@ -130,6 +131,14 @@ impl wita::EventHandler for Window {
         if ev.window == &self.main_window {
             let mut cursor_position = self.cursor_position.lock().unwrap();
             *cursor_position = ev.mouse_state.position;
+        }
+    }
+
+    fn mouse_wheel(&mut self, ev: wita::event::MouseWheel) {
+        if ev.window == &self.main_window {
+            if ev.axis == wita::MouseWheelAxis::Vertical {
+                self.event.send(WindowEvent::Wheel(-ev.distance / wita::WHEEL_DELTA)).ok();
+            }
         }
     }
 
