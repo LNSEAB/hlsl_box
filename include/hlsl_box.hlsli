@@ -4,7 +4,7 @@ struct Input {
 };
 
 struct Parameters {
-    float2 resolution;
+    float2 resolution; // left-top 0 .. rendering resolution
     float2 mouse; // left-top 0.0 ..= 1.0
     float time;
 };
@@ -12,5 +12,10 @@ struct Parameters {
 ConstantBuffer<Parameters> HLSLBox: register(b0);
 
 float2 normalized_position(float2 coord) {
-    return (coord * 2.0 - HLSLBox.resolution) / min(HLSLBox.resolution.x, HLSLBox.resolution.y);
+    return float2(coord.x * 2.0 - HLSLBox.resolution.x, HLSLBox.resolution.y - coord.y * 2.0)
+        / min(HLSLBox.resolution.x, HLSLBox.resolution.y);
+}
+
+float2 normalized_mouse_position() {
+    return float2(HLSLBox.mouse.x * 2.0 - 1.0, 1.0 - HLSLBox.mouse.y * 2.0);
 }

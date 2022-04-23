@@ -24,12 +24,6 @@ impl Vertex {
 type PlaneVertices = [Vertex; 4];
 type PlaneIndices = [u32; 6];
 
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
-enum PlaneOrigin {
-    LeftTop,
-    LeftBottom,
-}
-
 #[repr(C)]
 struct PlaneBuffer {
     vertices: PlaneVertices,
@@ -37,22 +31,14 @@ struct PlaneBuffer {
 }
 
 impl PlaneBuffer {
-    const fn new(origin: PlaneOrigin) -> Self {
+    const fn new() -> Self {
         Self {
-            vertices: match origin {
-                PlaneOrigin::LeftTop => [
-                    Vertex::new([-1.0, 1.0, 0.0], [0.0, 0.0]),
-                    Vertex::new([1.0, 1.0, 0.0], [1.0, 0.0]),
-                    Vertex::new([-1.0, -1.0, 0.0], [0.0, 1.0]),
-                    Vertex::new([1.0, -1.0, 0.0], [1.0, 1.0]),
-                ],
-                PlaneOrigin::LeftBottom => [
-                    Vertex::new([-1.0, 1.0, 0.0], [0.0, 1.0]),
-                    Vertex::new([1.0, 1.0, 0.0], [1.0, 1.0]),
-                    Vertex::new([-1.0, -1.0, 0.0], [0.0, 0.0]),
-                    Vertex::new([1.0, -1.0, 0.0], [1.0, 0.0]),
-                ],
-            },
+            vertices: [
+                Vertex::new([-1.0, 1.0, 0.0], [0.0, 0.0]),
+                Vertex::new([1.0, 1.0, 0.0], [1.0, 0.0]),
+                Vertex::new([-1.0, -1.0, 0.0], [0.0, 1.0]),
+                Vertex::new([1.0, -1.0, 0.0], [1.0, 1.0]),
+            ],
             indices: [0, 1, 2, 1, 3, 2],
         }
     }
@@ -75,11 +61,10 @@ struct Plane {
     _buffer: Buffer,
     vbv: D3D12_VERTEX_BUFFER_VIEW,
     ibv: D3D12_INDEX_BUFFER_VIEW,
-    origin: PlaneOrigin,
 }
 
 impl Plane {
-    fn new(device: &ID3D12Device, origin: PlaneOrigin) -> anyhow::Result<Self> {
+    fn new(device: &ID3D12Device) -> anyhow::Result<Self> {
         const BUFFER_SIZE: u64 = std::mem::size_of::<PlaneBuffer>() as _;
         unsafe {
             let buffer = Buffer::new(
@@ -101,7 +86,7 @@ impl Plane {
                 )?;
                 {
                     let data = uploader.map()?;
-                    data.copy(&PlaneBuffer::new(origin));
+                    data.copy(&PlaneBuffer::new());
                 }
                 uploader
             };
@@ -150,13 +135,12 @@ impl Plane {
                 _buffer: buffer,
                 vbv,
                 ibv,
-                origin,
             })
         }
     }
 
     fn indices_len(&self) -> usize {
-        PlaneBuffer::new(self.origin).indices_len()
+        PlaneBuffer::new().indices_len()
     }
 }
 
@@ -467,7 +451,7 @@ impl PixelShader {
                 D3D12_RESOURCE_STATE_GENERIC_READ,
                 None,
             )?;
-            let plane = Plane::new(device, PlaneOrigin::LeftBottom)?;
+            let plane = Plane::new(device)?;
             let vs = compiler.compile_from_str(
                 include_str!("./shader/plane.hlsl"),
                 "main",
@@ -588,7 +572,7 @@ impl CopyTextureShader {
         shader_model: hlsl::ShaderModel,
     ) -> anyhow::Result<Self> {
         unsafe {
-            let plane = Plane::new(device, PlaneOrigin::LeftTop)?;
+            let plane = Plane::new(device)?;
             let root_signature: ID3D12RootSignature = {
                 let ranges = [D3D12_DESCRIPTOR_RANGE {
                     RangeType: D3D12_DESCRIPTOR_RANGE_TYPE_SRV,

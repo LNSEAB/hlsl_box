@@ -17,8 +17,8 @@ float4 main(Input input): SV_Target {
     const float2 pos = normalized_position(input.coord);
     const float3 camera = float3(0.0, 0.0, 10.0);
     const float3 ray = normalize(float3(pos, 0.0) - camera);
-    const float2 mouse_pos = HLSLBox.mouse * 2.0 - 1.0;
-    const float3 light_dir = normalize(float3(mouse_pos.x, -mouse_pos.y, 1.0));
+    const float2 mouse_pos = normalized_mouse_position();
+    const float3 light_dir = normalize(float3(mouse_pos, 1.0));
     float3 cur = camera;
     float3 col = float3(0.0, 0.0, 0.0);
     float size = 0.5;
