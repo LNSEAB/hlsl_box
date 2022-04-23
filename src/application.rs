@@ -414,8 +414,12 @@ impl Application {
             }
             if let State::Rendering(r) = &mut self.state {
                 r.parameters.mouse = {
+                    let size = self.window_receiver.main_window.inner_size().cast::<f32>();
                     let cursor_position = self.window_receiver.cursor_position.lock().unwrap();
-                    [cursor_position.x as _, cursor_position.y as _]
+                    [
+                        cursor_position.x as f32 / size.width,
+                        cursor_position.y as f32 / size.height,
+                    ]
                 };
                 r.parameters.time = (std::time::Instant::now() - self.start_time).as_secs_f32();
             }

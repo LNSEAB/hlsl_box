@@ -5,7 +5,7 @@ struct Input {
 
 struct Parameters {
     float2 resolution;
-    float2 mouse;
+    float2 mouse; // left-top 0.0 ..= 1.0
     float time;
 };
 
