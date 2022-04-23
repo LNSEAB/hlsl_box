@@ -1,10 +1,10 @@
 struct Input {
     float4 position: SV_Position;
-    float2 coord: TEXCOORD0;
+    float2 coord: TEXCOORD0; // left-top 0 ..= rendering resolution
 };
 
 struct Parameters {
-    float2 resolution; // left-top 0 .. rendering resolution
+    float2 resolution;
     float2 mouse; // left-top 0.0 ..= 1.0
     float time;
 };
