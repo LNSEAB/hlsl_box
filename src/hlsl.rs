@@ -6,16 +6,16 @@ use std::path::Path;
 use windows::core::{Interface, GUID, PWSTR};
 use windows::Win32::{
     Foundation::E_INVALIDARG,
-    Graphics::{Direct3D::Dxc::*, Direct3D12::*}
+    Graphics::{Direct3D::Dxc::*, Direct3D12::*},
 };
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
-    #[error("{}", .0)]
-    Io(std::io::Error),
-    #[error("{}", .0)]
-    Api(windows::core::Error),
-    #[error("{}", .0)]
+    #[error("{0}")]
+    Io(#[from] std::io::Error),
+    #[error("{0}")]
+    Api(#[from] windows::core::Error),
+    #[error("{0}")]
     Compile(String),
     #[error("file too large")]
     FileTooLarge,
@@ -23,21 +23,9 @@ pub enum Error {
     UnsupportedVersion,
 }
 
-impl From<std::io::Error> for Error {
-    fn from(src: std::io::Error) -> Self {
-        Self::Io(src)
-    }
-}
-
 impl From<std::io::ErrorKind> for Error {
     fn from(src: std::io::ErrorKind) -> Self {
         Self::Io(src.into())
-    }
-}
-
-impl From<windows::core::Error> for Error {
-    fn from(src: windows::core::Error) -> Self {
-        Self::Api(src)
     }
 }
 
