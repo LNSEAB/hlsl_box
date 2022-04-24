@@ -97,6 +97,7 @@ struct Rendering {
 }
 
 struct ErrorMessage {
+    window: wita::Window,
     ui_props: UiProperties,
     text: Vec<String>,
     layouts: VecDeque<mltg::TextLayout>,
@@ -104,7 +105,12 @@ struct ErrorMessage {
 }
 
 impl ErrorMessage {
-    fn new(text: &str, ui_props: &UiProperties, size: mltg::Size) -> anyhow::Result<Self> {
+    fn new(
+        window: wita::Window,
+        text: &str,
+        ui_props: &UiProperties,
+        size: mltg::Size,
+    ) -> anyhow::Result<Self> {
         let text = text.split('\n').map(|t| t.to_string()).collect::<Vec<_>>();
         let mut layouts = VecDeque::new();
         let mut index = 0;
@@ -121,6 +127,7 @@ impl ErrorMessage {
             layouts.push_back(layout);
         }
         Ok(Self {
+            window,
             ui_props: ui_props.clone(),
             text,
             layouts,
@@ -182,6 +189,15 @@ impl ErrorMessage {
     }
 
     fn draw(&self, cmd: &mltg::DrawCommand) {
+        let size = self
+            .window
+            .inner_size()
+            .to_logical(self.window.dpi())
+            .cast::<f32>();
+        cmd.fill(
+            &mltg::Rect::new([0.0, 0.0], [size.width, size.height]),
+            &self.ui_props.bg_color,
+        );
         let mut y = 0.0;
         for layout in &self.layouts {
             cmd.draw_text_layout(&layout, &self.ui_props.text_color, [0.0, y]);
@@ -451,6 +467,7 @@ impl Application {
             .to_logical(dpi)
             .cast::<f32>();
         self.state = State::Error(ErrorMessage::new(
+            self.window_receiver.main_window.clone(),
             &format!("{}", e),
             &self.ui_props,
             [size.width, size.height].into(),
