@@ -4,7 +4,10 @@ use std::fs::File;
 use std::io::{BufReader, Read};
 use std::path::Path;
 use windows::core::{Interface, GUID, PWSTR};
-use windows::Win32::Graphics::{Direct3D::Dxc::*, Direct3D12::*};
+use windows::Win32::{
+    Foundation::E_INVALIDARG,
+    Graphics::{Direct3D::Dxc::*, Direct3D12::*}
+};
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
@@ -139,15 +142,21 @@ impl ShaderModel {
 
     fn highest(device: &ID3D12Device) -> Result<Self, Error> {
         unsafe {
-            let mut data = D3D12_FEATURE_DATA_SHADER_MODEL {
-                HighestShaderModel: D3D_SHADER_MODEL_6_5,
-            };
-            device.CheckFeatureSupport(
-                D3D12_FEATURE_SHADER_MODEL,
-                &mut data as *mut _ as _,
-                std::mem::size_of_val(&data) as _,
-            )?;
-            Ok(Self(data.HighestShaderModel))
+            let mut data = D3D12_FEATURE_DATA_SHADER_MODEL::default();
+            for sm in SHADER_MODELS.iter().rev() {
+                data.HighestShaderModel = *sm;
+                let ret = device.CheckFeatureSupport(
+                    D3D12_FEATURE_SHADER_MODEL,
+                    &mut data as *mut _ as _,
+                    std::mem::size_of_val(&data) as _,
+                );
+                match ret {
+                    Ok(_) => return Ok(Self(data.HighestShaderModel)),
+                    Err(e) if e.code() != E_INVALIDARG => return Err(e.into()),
+                    _ => {}
+                }
+            }
+            Err(Error::UnsupportedVersion)
         }
     }
 
@@ -339,6 +348,6 @@ mod tests {
             device.unwrap()
         };
         let version = ShaderModel::highest(&device).unwrap();
-        assert!(version.0 .0 >= D3D_SHADER_MODEL_6_0.0);
+        assert!(version.0 .0 >= D3D_SHADER_MODEL_5_1.0);
     }
 }
