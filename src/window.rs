@@ -172,6 +172,20 @@ impl wita::EventHandler for Window {
         }
     }
 
+    fn restored(&mut self, ev: wita::event::Restored) {
+        if ev.window == &self.main_window {
+            self.event.send(WindowEvent::Resized(ev.size)).ok();
+            debug!("main_window restored");
+        }
+    }
+
+    fn maximized(&mut self, ev: wita::event::Maximized) {
+        if ev.window == &self.main_window {
+            self.event.send(WindowEvent::Resized(ev.size)).ok();
+            debug!("main_window maximized");
+        }
+    }
+
     fn dpi_changed(&mut self, ev: wita::event::DpiChanged) {
         if ev.window == &self.main_window {
             self.event.send(WindowEvent::DpiChanged(ev.new_dpi)).ok();
