@@ -1,6 +1,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod application;
+mod error;
 mod hlsl;
 mod monitor;
 mod renderer;
@@ -8,12 +9,15 @@ mod settings;
 mod utility;
 mod window;
 
+use once_cell::sync::Lazy;
 use std::cell::RefCell;
 use std::rc::Rc;
 use std::sync::Arc;
 use tracing::{debug, error, info};
+use windows::Win32::Globalization::*;
 
 use application::{Application, Method};
+use error::Error;
 use monitor::*;
 use renderer::*;
 use settings::Settings;
@@ -22,6 +26,12 @@ use window::*;
 
 const SETTINGS_PATH: &str = "./settings.toml";
 const TITLE: &str = "HLSL Box";
+
+static LOCALE: Lazy<Option<String>> = Lazy::new(|| unsafe {
+    let mut buffer = vec![0u16; 85];
+    let size = GetUserDefaultLocaleName(&mut buffer) as usize;
+    (size != 0).then(|| String::from_utf16_lossy(&buffer[0..size - 1]))
+});
 
 fn logger() {
     use std::fs::File;
@@ -50,7 +60,8 @@ fn logger() {
 
 fn main() {
     unsafe {
-        libc::setlocale(libc::LC_ALL, b"\0".as_ptr() as _);
+        let locale = std::ffi::CString::new(LOCALE.as_ref().map_or("", |l| l.as_str())).unwrap();
+        libc::setlocale(libc::LC_ALL, locale.as_ptr());
     }
     logger();
     std::panic::set_hook(Box::new(|info| unsafe {
@@ -74,16 +85,19 @@ fn main() {
                 }
                 error!("panic: {}", s);
             }
-            None => match info.location() {
-                Some(loc) => error!("panic: unknown error ({}:{})", loc.file(), loc.line()),
-                None => error!("panic: unknown error"),
+            None => {
+                let e = Error::UnknownError;
+                match info.location() {
+                    Some(loc) => error!("panic: {} ({}:{})", e, loc.file(), loc.line()),
+                    None => error!("panic: {}", e),
+                }
             },
         };
     }));
+    info!("start");
     let _coinit = coinit::init(coinit::APARTMENTTHREADED | coinit::DISABLE_OLE1DDE).unwrap();
     let th_handle = Rc::new(RefCell::new(None));
     let th_handle_f = th_handle.clone();
-    info!("start");
     let f = move || -> anyhow::Result<Window> {
         let settings = Arc::new(Settings::load(SETTINGS_PATH)?);
         let mut key_map = KeyboardMap::new();
@@ -114,6 +128,6 @@ fn main() {
     if let Err(e) = wita::run(wita::RunType::Wait, f) {
         error!("{}\n{}", e, e.backtrace());
     }
-    th_handle.borrow_mut().take().unwrap().join().ok();
+    th_handle.borrow_mut().take().unwrap().join().unwrap();
     info!("end");
 }

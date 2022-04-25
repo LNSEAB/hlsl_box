@@ -9,38 +9,6 @@ use windows::Win32::{
     Graphics::{Direct3D::Dxc::*, Direct3D12::*},
 };
 
-#[derive(Debug, thiserror::Error)]
-pub enum Error {
-    #[error("{0}")]
-    Io(#[from] std::io::Error),
-    #[error("{0}")]
-    Api(#[from] windows::core::Error),
-    #[error("{0}")]
-    Compile(String),
-    #[error("file too large")]
-    FileTooLarge,
-    #[error("unsupported version")]
-    UnsupportedVersion,
-}
-
-impl From<std::io::ErrorKind> for Error {
-    fn from(src: std::io::ErrorKind) -> Self {
-        Self::Io(src.into())
-    }
-}
-
-impl From<IDxcBlobUtf8> for Error {
-    fn from(src: IDxcBlobUtf8) -> Self {
-        unsafe {
-            let slice = std::slice::from_raw_parts(
-                src.GetBufferPointer() as *const u8,
-                src.GetBufferSize() - 1,
-            );
-            Self::Compile(String::from_utf8_lossy(slice).to_string())
-        }
-    }
-}
-
 #[derive(Clone, PartialEq, Eq)]
 #[repr(transparent)]
 pub struct Blob(IDxcBlob);
@@ -118,9 +86,7 @@ impl ShaderModel {
 
     fn specify(version: &str) -> Result<Self, Error> {
         let re = Regex::new(r"(\d+)_(\d+)").unwrap();
-        let cap = re
-            .captures(version)
-            .ok_or(std::io::Error::from(std::io::ErrorKind::InvalidData))?;
+        let cap = re.captures(version).ok_or(Error::InvalidVersion)?;
         let v = i32::from_str_radix(&format!("{}{}", &cap[1], &cap[2]), 16).unwrap();
         if !SHADER_MODELS.contains(&D3D_SHADER_MODEL(v)) {
             return Err(Error::UnsupportedVersion);
@@ -210,7 +176,7 @@ impl Compiler {
             return Err(Error::FileTooLarge);
         }
         if data.chars().find(|&c| c == '\0').is_some() {
-            return Err(std::io::ErrorKind::InvalidData.into());
+            return Err(Error::ReadFile(std::io::ErrorKind::UnexpectedEof.into()));
         }
         unsafe {
             let src =
@@ -274,10 +240,12 @@ impl Compiler {
     ) -> Result<Blob, Error> {
         let path = path.as_ref();
         let data = {
-            let file = File::open(path)?;
+            let file = File::open(path).map_err(|e| Error::ReadFile(e))?;
             let mut reader = BufReader::new(file);
             let mut data = String::new();
-            reader.read_to_string(&mut data)?;
+            reader
+                .read_to_string(&mut data)
+                .map_err(|e| Error::ReadFile(e))?;
             data
         };
         let (args, _tmp) = create_args(entry_point, target, path.to_str(), args);
