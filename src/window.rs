@@ -17,6 +17,7 @@ pub enum WindowEvent {
 pub struct WindowReceiver {
     pub main_window: wita::Window,
     pub event: mpsc::Receiver<WindowEvent>,
+    pub sync_event: mpsc::Receiver<WindowEvent>,
     pub cursor_position: Arc<Mutex<wita::PhysicalPosition<i32>>>,
 }
 
@@ -60,6 +61,7 @@ pub struct Window {
     settings: Arc<Settings>,
     main_window: wita::Window,
     event: mpsc::Sender<WindowEvent>,
+    sync_event: mpsc::SyncSender<WindowEvent>,
     cursor_position: Arc<Mutex<wita::PhysicalPosition<i32>>>,
     key_map: KeyboardMap,
     keys: Vec<wita::VirtualKey>,
@@ -83,12 +85,14 @@ impl Window {
             .accept_drag_files(true)
             .build()?;
         let (tx, rx) = mpsc::channel();
+        let (sync_tx, sync_rx) = mpsc::sync_channel(0);
         let cursor_position = Arc::new(Mutex::new(wita::PhysicalPosition::new(0, 0)));
         Ok((
             Self {
                 settings,
                 main_window: main_window.clone(),
                 event: tx,
+                sync_event: sync_tx,
                 cursor_position: cursor_position.clone(),
                 key_map,
                 keys: Vec::with_capacity(5),
@@ -96,6 +100,7 @@ impl Window {
             WindowReceiver {
                 main_window,
                 event: rx,
+                sync_event: sync_rx,
                 cursor_position,
             },
         ))
@@ -178,7 +183,7 @@ impl wita::EventHandler for Window {
         if ev.window == &self.main_window {
             let position = self.main_window.position();
             let size = self.main_window.inner_size();
-            self.event.send(WindowEvent::Closed { position, size }).ok();
+            self.sync_event.send(WindowEvent::Closed { position, size }).unwrap_or(());
             debug!("main_window closed");
         }
     }
