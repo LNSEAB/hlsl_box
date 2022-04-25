@@ -116,6 +116,7 @@ dependencies = [
  "ifdlg",
  "libc",
  "mltg",
+ "once_cell",
  "regex",
  "serde",
  "thiserror",

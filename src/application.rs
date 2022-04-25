@@ -258,6 +258,7 @@ impl Application {
             }
             info!("enable debug layer");
         }
+        info!("locale: {}", LOCALE.as_ref().map_or("", |s| s.as_str()));
         info!("settings version: {}", settings.version);
         let d3d12_device: ID3D12Device = unsafe {
             let mut device = None;
