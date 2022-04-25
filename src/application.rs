@@ -346,6 +346,30 @@ impl Application {
 
     pub fn run(&mut self) -> anyhow::Result<()> {
         loop {
+            match self.window_receiver.sync_event.try_recv() {
+                Ok(WindowEvent::Closed { position, size }) => {
+                    debug!("WindowEvent::Closed");
+                    let settings = Settings {
+                        version: self.settings.version.clone(),
+                        frame_counter: self.show_frame_counter.get(),
+                        window: settings::Window {
+                            x: position.x,
+                            y: position.y,
+                            width: size.width,
+                            height: size.height,
+                        },
+                        resolution: self.settings.resolution.clone(),
+                        shader: self.settings.shader.clone(),
+                        appearance: self.settings.appearance.clone(),
+                    };
+                    match settings.save(SETTINGS_PATH) {
+                        Ok(_) => info!("saved settings"),
+                        Err(e) => error!("save settings: {}", e),
+                    }
+                    break;
+                }
+                _ => {}
+            }
             match self.window_receiver.event.try_recv() {
                 Ok(WindowEvent::LoadFile(path)) => {
                     debug!("WindowEvent::LoadFile");
@@ -395,27 +419,6 @@ impl Application {
                     if let Err(e) = self.renderer.change_dpi(dpi) {
                         error!("{}", e);
                     }
-                }
-                Ok(WindowEvent::Closed { position, size }) => {
-                    debug!("WindowEvent::Closed");
-                    let settings = Settings {
-                        version: self.settings.version.clone(),
-                        frame_counter: self.show_frame_counter.get(),
-                        window: settings::Window {
-                            x: position.x,
-                            y: position.y,
-                            width: size.width,
-                            height: size.height,
-                        },
-                        resolution: self.settings.resolution.clone(),
-                        shader: self.settings.shader.clone(),
-                        appearance: self.settings.appearance.clone(),
-                    };
-                    match settings.save(SETTINGS_PATH) {
-                        Ok(_) => info!("saved settings"),
-                        Err(e) => error!("save settings: {}", e),
-                    }
-                    break;
                 }
                 _ => {}
             }
