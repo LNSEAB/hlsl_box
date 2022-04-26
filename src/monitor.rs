@@ -13,6 +13,7 @@ pub struct DirMonitor {
     th: Option<std::thread::JoinHandle<()>>,
     exit: Arc<AtomicBool>,
     rx: mpsc::Receiver<PathBuf>,
+    path: PathBuf,
 }
 
 impl DirMonitor {
@@ -21,16 +22,25 @@ impl DirMonitor {
         let exit_flag = Arc::new(AtomicBool::new(false));
         let exit = exit_flag.clone();
         let path = path.as_ref().to_path_buf();
+        let th_path = path.clone();
         let th = std::thread::spawn(move || unsafe {
-            if let Err(e) = Self::read_directory(path, exit_flag, tx) {
+            let p = th_path.clone();
+            debug!("start monitoring directory: {}", p.display());
+            if let Err(e) = Self::read_directory(th_path, exit_flag, tx) {
                 error!("read_directory: {}", e);
             }
+            debug!("end monitoring directory: {}", p.display());
         });
         Ok(Self {
             th: Some(th),
             exit,
             rx,
+            path,
         })
+    }
+
+    pub fn path(&self) -> &Path {
+        &self.path
     }
 
     pub fn try_recv(&self) -> Option<PathBuf> {

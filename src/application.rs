@@ -97,6 +97,7 @@ struct Rendering {
 }
 
 struct ErrorMessage {
+    path: PathBuf,
     window: wita::Window,
     ui_props: UiProperties,
     text: Vec<String>,
@@ -106,6 +107,7 @@ struct ErrorMessage {
 
 impl ErrorMessage {
     fn new(
+        path: PathBuf,
         window: wita::Window,
         text: &str,
         ui_props: &UiProperties,
@@ -127,6 +129,7 @@ impl ErrorMessage {
             layouts.push_back(layout);
         }
         Ok(Self {
+            path,
             window,
             ui_props: ui_props.clone(),
             text,
@@ -314,6 +317,11 @@ impl Application {
 
     fn load_file(&mut self, path: &Path) -> anyhow::Result<()> {
         assert!(path.is_file());
+        let parent = path.parent().unwrap();
+        if self.dir.as_ref().map_or(true, |d| d.path() != parent) {
+            debug!("load_file: DirMonitor::new: {}", parent.display());
+            self.dir = Some(DirMonitor::new(parent)?);
+        }
         let blob = self.compiler.compile_from_file(
             path,
             "main",
@@ -337,7 +345,6 @@ impl Application {
             show_frame_counter: self.show_frame_counter.clone(),
         });
         self.start_time = std::time::Instant::now();
-        self.dir = Some(DirMonitor::new(path.parent().unwrap())?);
         self.window_receiver
             .main_window
             .set_title(format!("HLSLBox {}", path.display()));
@@ -375,7 +382,7 @@ impl Application {
                 Ok(WindowEvent::LoadFile(path)) => {
                     debug!("WindowEvent::LoadFile");
                     if let Err(e) = self.load_file(&path) {
-                        self.set_error(e)?;
+                        self.set_error(&path, e)?;
                     }
                 }
                 Ok(WindowEvent::KeyInput(m)) => {
@@ -386,7 +393,7 @@ impl Application {
                             match dlg.show::<PathBuf>() {
                                 Ok(Some(path)) => {
                                     if let Err(e) = self.load_file(&path) {
-                                        self.set_error(e)?;
+                                        self.set_error(&path, e)?;
                                     }
                                 }
                                 Err(e) => {
@@ -424,12 +431,18 @@ impl Application {
                 _ => {}
             }
             if let Some(path) = self.dir.as_ref().and_then(|dir| dir.try_recv()) {
-                if let State::Rendering(r) = &self.state {
-                    if r.path == path {
+                match &self.state {
+                    State::Rendering(r) => if r.path == path {
                         if let Err(e) = self.load_file(&path) {
-                            self.set_error(e)?;
+                            self.set_error(&path, e)?;
                         }
                     }
+                    State::Error(e) => if e.path == path {
+                        if let Err(e) = self.load_file(&path) {
+                            self.set_error(&path, e)?;
+                        }
+                    }
+                    _ => {}
                 }
             }
             if let State::Rendering(r) = &mut self.state {
@@ -462,7 +475,7 @@ impl Application {
         Ok(())
     }
 
-    fn set_error(&mut self, e: anyhow::Error) -> anyhow::Result<()> {
+    fn set_error(&mut self, path: &Path, e: anyhow::Error) -> anyhow::Result<()> {
         let dpi = self.window_receiver.main_window.dpi();
         let size = self
             .window_receiver
@@ -471,6 +484,7 @@ impl Application {
             .to_logical(dpi)
             .cast::<f32>();
         self.state = State::Error(ErrorMessage::new(
+            path.to_path_buf(),
             self.window_receiver.main_window.clone(),
             &format!("{}", e),
             &self.ui_props,
