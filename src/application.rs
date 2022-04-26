@@ -427,6 +427,9 @@ impl Application {
                     if let Err(e) = self.renderer.change_dpi(dpi) {
                         error!("{}", e);
                     }
+                    if let Err(e) = self.renderer.resize(self.window_receiver.main_window.inner_size()) {
+                        error!("{}", e);
+                    }
                 }
                 _ => {}
             }
