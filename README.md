@@ -18,7 +18,7 @@
 
 * エントリーポイントの名前は`main`
 * `main`の引数は[`include/hlsl_box.hlsli`](include/hlsl_box.hlsli)にある`Input`構造体
-* `include`フォルダにあるファイルは`#include`できます
+* `include`フォルダにあるファイルは`#include`ができます。
 
 ### 最小例
 [`examples/minimum.hlsl`](examples/minimum.hlsl)
