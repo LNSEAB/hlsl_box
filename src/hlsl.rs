@@ -26,9 +26,7 @@ impl Blob {
 
 fn create_instance<T: Interface>(clsid: &GUID) -> Result<T, Error> {
     unsafe {
-        let mut obj: Option<T> = None;
-        DxcCreateInstance(clsid, &T::IID, &mut obj as *mut _ as _)
-            .map(|_| obj.unwrap())
+        DxcCreateInstance(clsid)
             .map_err(|e| e.into())
     }
 }
