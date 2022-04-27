@@ -91,7 +91,7 @@ fn main() {
                     Some(loc) => error!("panic: {} ({}:{})", e, loc.file(), loc.line()),
                     None => error!("panic: {}", e),
                 }
-            },
+            }
         };
     }));
     info!("start");
@@ -110,7 +110,7 @@ fn main() {
             Method::FrameCounter,
         );
         let (window, window_receiver) = Window::new(settings.clone(), key_map).unwrap();
-        let th_settings = settings.clone();
+        let th_settings = settings;
         let th = std::thread::spawn(move || {
             info!("start rendering thread");
             let _coinit = coinit::init(coinit::MULTITHREADED | coinit::DISABLE_OLE1DDE).unwrap();

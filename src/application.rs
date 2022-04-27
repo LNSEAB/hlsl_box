@@ -203,7 +203,7 @@ impl ErrorMessage {
         );
         let mut y = 0.0;
         for layout in &self.layouts {
-            cmd.draw_text_layout(&layout, &self.ui_props.text_color, [0.0, y]);
+            cmd.draw_text_layout(layout, &self.ui_props.text_color, [0.0, y]);
             y += layout.size().height;
         }
     }
@@ -332,7 +332,7 @@ impl Application {
         let resolution = self.settings.resolution.clone();
         let parameters = Parameters {
             resolution: [resolution.width as _, resolution.height as _],
-            mouse: self.mouse.clone(),
+            mouse: self.mouse,
             time: 0.0,
         };
         let frame_counter = FrameCounter::new(&self.ui_props)?;
@@ -354,29 +354,27 @@ impl Application {
 
     pub fn run(&mut self) -> anyhow::Result<()> {
         loop {
-            match self.window_receiver.sync_event.try_recv() {
-                Ok(WindowEvent::Closed { position, size }) => {
-                    debug!("WindowEvent::Closed");
-                    let settings = Settings {
-                        version: self.settings.version.clone(),
-                        frame_counter: self.show_frame_counter.get(),
-                        window: settings::Window {
-                            x: position.x,
-                            y: position.y,
-                            width: size.width,
-                            height: size.height,
-                        },
-                        resolution: self.settings.resolution.clone(),
-                        shader: self.settings.shader.clone(),
-                        appearance: self.settings.appearance.clone(),
-                    };
-                    match settings.save(SETTINGS_PATH) {
-                        Ok(_) => info!("saved settings"),
-                        Err(e) => error!("save settings: {}", e),
-                    }
-                    break;
+            let sync_event = self.window_receiver.sync_event.try_recv();
+            if let Ok(WindowEvent::Closed { position, size }) = sync_event {
+                debug!("WindowEvent::Closed");
+                let settings = Settings {
+                    version: self.settings.version.clone(),
+                    frame_counter: self.show_frame_counter.get(),
+                    window: settings::Window {
+                        x: position.x,
+                        y: position.y,
+                        width: size.width,
+                        height: size.height,
+                    },
+                    resolution: self.settings.resolution.clone(),
+                    shader: self.settings.shader.clone(),
+                    appearance: self.settings.appearance.clone(),
+                };
+                match settings.save(SETTINGS_PATH) {
+                    Ok(_) => info!("saved settings"),
+                    Err(e) => error!("save settings: {}", e),
                 }
-                _ => {}
+                break;
             }
             match self.window_receiver.event.try_recv() {
                 Ok(WindowEvent::LoadFile(path)) => {
@@ -427,7 +425,10 @@ impl Application {
                     if let Err(e) = self.renderer.change_dpi(dpi) {
                         error!("{}", e);
                     }
-                    if let Err(e) = self.renderer.resize(self.window_receiver.main_window.inner_size()) {
+                    if let Err(e) = self
+                        .renderer
+                        .resize(self.window_receiver.main_window.inner_size())
+                    {
                         error!("{}", e);
                     }
                 }
@@ -435,14 +436,18 @@ impl Application {
             }
             if let Some(path) = self.dir.as_ref().and_then(|dir| dir.try_recv()) {
                 match &self.state {
-                    State::Rendering(r) => if r.path == path {
-                        if let Err(e) = self.load_file(&path) {
-                            self.set_error(&path, e)?;
+                    State::Rendering(r) => {
+                        if r.path == path {
+                            if let Err(e) = self.load_file(&path) {
+                                self.set_error(&path, e)?;
+                            }
                         }
                     }
-                    State::Error(e) => if e.path == path {
-                        if let Err(e) = self.load_file(&path) {
-                            self.set_error(&path, e)?;
+                    State::Error(e) => {
+                        if e.path == path {
+                            if let Err(e) = self.load_file(&path) {
+                                self.set_error(&path, e)?;
+                            }
                         }
                     }
                     _ => {}

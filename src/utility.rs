@@ -23,7 +23,7 @@ impl Event {
     }
 
     pub fn handle(&self) -> HANDLE {
-        self.0.clone()
+        self.0
     }
 }
 
@@ -206,6 +206,7 @@ impl<'a> From<&'a Buffer> for &'a ID3D12Resource {
 pub struct Texture2D(ID3D12Resource);
 
 impl Texture2D {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         name: &str,
         device: &ID3D12Device,
@@ -240,7 +241,7 @@ impl Texture2D {
                     &D3D12_CLEAR_VALUE {
                         Format: desc.Format,
                         Anonymous: D3D12_CLEAR_VALUE_0 {
-                            Color: clear_color.clone(),
+                            Color: *clear_color,
                         },
                     },
                     &mut resource,
