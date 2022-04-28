@@ -174,9 +174,9 @@ dependencies = [
 
 [[package]]
 name = "mltg"
-version = "0.8.3"
+version = "0.8.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a5391726bf3abee037619d6d1486923f6b5bc2683c566cfcf01061c71438cb53"
+checksum = "f3b133f6f76790eddecf4f3cf1fd78613fac03f1567aa10480a593f6112666d1"
 dependencies = [
  "gecl",
  "windows",
@@ -550,9 +550,9 @@ checksum = "c811ca4a8c853ef420abd8592ba53ddbbac90410fab6903b3e79972a631f7680"
 
 [[package]]
 name = "wita"
-version = "0.15.2"
+version = "0.15.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "237ea68d1adb734ac78c35e064eeb42a336d3d61b8d33acee90e1445f8b96472"
+checksum = "04b963841823a24af0f5157597e83b87a658967596e396476b8c20ba433a08bc"
 dependencies = [
  "log",
  "num",

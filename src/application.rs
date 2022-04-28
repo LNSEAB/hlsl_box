@@ -233,7 +233,7 @@ impl RenderUi for State {
 }
 
 pub struct Application {
-    settings: Arc<Settings>,
+    settings: Settings,
     _d3d12_device: ID3D12Device,
     shader_model: hlsl::ShaderModel,
     compiler: hlsl::Compiler,
@@ -249,7 +249,7 @@ pub struct Application {
 }
 
 impl Application {
-    pub fn new(settings: Arc<Settings>, window_receiver: WindowReceiver) -> anyhow::Result<Self> {
+    pub fn new(settings: Settings, window_receiver: WindowReceiver) -> anyhow::Result<Self> {
         let args = std::env::args().collect::<Vec<_>>();
         let compiler = hlsl::Compiler::new()?;
         let debug_layer = args.iter().any(|arg| arg == "--debuglayer");
@@ -355,22 +355,10 @@ impl Application {
     pub fn run(&mut self) -> anyhow::Result<()> {
         loop {
             let sync_event = self.window_receiver.sync_event.try_recv();
-            if let Ok(WindowEvent::Closed { position, size }) = sync_event {
+            if let Ok(WindowEvent::Closed(window)) = sync_event {
                 debug!("WindowEvent::Closed");
-                let settings = Settings {
-                    version: self.settings.version.clone(),
-                    frame_counter: self.show_frame_counter.get(),
-                    window: settings::Window {
-                        x: position.x,
-                        y: position.y,
-                        width: size.width,
-                        height: size.height,
-                    },
-                    resolution: self.settings.resolution.clone(),
-                    shader: self.settings.shader.clone(),
-                    appearance: self.settings.appearance.clone(),
-                };
-                match settings.save(SETTINGS_PATH) {
+                self.settings.window = window;
+                match self.settings.save(SETTINGS_PATH) {
                     Ok(_) => info!("saved settings"),
                     Err(e) => error!("save settings: {}", e),
                 }
@@ -420,15 +408,28 @@ impl Application {
                         error!("{}", e);
                     }
                 }
+                Ok(WindowEvent::Restored(size)) => {
+                    debug!("WindowEvent::Restored");
+                    if let Err(e) = self.renderer.resize(size) {
+                        error!("{}", e);
+                    }
+                }
+                Ok(WindowEvent::Minimized) => {
+                    debug!("WindowEvent::Minimized");
+                }
+                Ok(WindowEvent::Maximized(size)) => {
+                    debug!("WindowEvent::Maximized");
+                    if let Err(e) = self.renderer.resize(size) {
+                        error!("{}", e);
+                    }
+                }
                 Ok(WindowEvent::DpiChanged(dpi)) => {
                     debug!("WindowEvent::DpiChanged");
                     if let Err(e) = self.renderer.change_dpi(dpi) {
                         error!("{}", e);
                     }
-                    if let Err(e) = self
-                        .renderer
-                        .resize(self.window_receiver.main_window.inner_size())
-                    {
+                    let size = self.window_receiver.main_window.inner_size();
+                    if let Err(e) = self.renderer.resize(size) {
                         error!("{}", e);
                     }
                 }
