@@ -62,17 +62,20 @@ struct Window {
     position: wita::ScreenPosition,
     prev_position: wita::ScreenPosition,
     size: wita::PhysicalSize<u32>,
+    maximized: bool,
 }
 
 impl Window {
     fn new(window: wita::Window) -> Self {
         let position = window.position();
         let size = window.inner_size();
+        let maximized = window.is_maximized();
         Self {
             window,
             position,
             prev_position: position,
             size,
+            maximized,
         }
     }
 }
@@ -210,6 +213,7 @@ impl wita::EventHandler for WindowManager {
     fn restored(&mut self, ev: wita::event::Restored) {
         if ev.window == &self.main_window {
             self.event.send(WindowEvent::Restored(ev.size)).ok();
+            self.main_window.maximized = self.main_window.window.is_maximized();
             debug!("main_window restored");
         }
     }
@@ -226,6 +230,7 @@ impl wita::EventHandler for WindowManager {
         if ev.window == &self.main_window {
             self.event.send(WindowEvent::Maximized(ev.size)).ok();
             self.main_window.position = self.main_window.prev_position;
+            self.main_window.maximized = true;
             debug!("main_window maximized");
         }
     }
@@ -244,7 +249,7 @@ impl wita::EventHandler for WindowManager {
                 y: self.main_window.position.y,
                 width: self.main_window.size.width,
                 height: self.main_window.size.height,
-                maximized: self.main_window.window.is_maximized(),
+                maximized: self.main_window.maximized,
             };
             self.sync_event
                 .send(WindowEvent::Closed(params))
