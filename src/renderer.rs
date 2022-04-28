@@ -302,7 +302,7 @@ impl SwapChain {
             let mut handle = self.rtv_heap.GetCPUDescriptorHandleForHeapStart();
             handle.ptr += self.rtv_size * index;
             let desc = self.swap_chain.GetDesc1().unwrap();
-            let rtvs = [handle.clone()];
+            let rtvs = [handle];
             cmd_list.RSSetViewports(&[D3D12_VIEWPORT {
                 Width: desc.Width as _,
                 Height: desc.Height as _,
@@ -531,7 +531,7 @@ impl PixelShader {
             };
             self.device
                 .CreateGraphicsPipelineState(&desc)
-                .map(|pl| PixelShaderPipeline(pl))
+                .map(PixelShaderPipeline)
                 .map_err(|e| e.into())
         }
     }
@@ -551,7 +551,7 @@ impl PixelShader {
             cmd_list.SetPipelineState(&pipeline.0);
             cmd_list.SetGraphicsRootConstantBufferView(0, self.parameters.gpu_virtual_address());
             cmd_list.IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
-            cmd_list.IASetVertexBuffers(0, &[self.plane.vbv.clone()]);
+            cmd_list.IASetVertexBuffers(0, &[self.plane.vbv]);
             cmd_list.IASetIndexBuffer(&self.plane.ibv);
             cmd_list.DrawIndexedInstanced(self.plane.indices_len() as _, 1, 0, 0, 0);
         }
@@ -806,7 +806,7 @@ impl RenderTarget {
             handle.ptr += index * self.rtv_size;
             let rtvs = [handle];
             transition_barriers(
-                &cmd_list,
+                cmd_list,
                 [TransitionBarrier {
                     resource: self.buffers[index].handle().clone(),
                     subresource: 0,
@@ -835,7 +835,7 @@ impl RenderTarget {
             let mut handle = self.desc_heap.GetGPUDescriptorHandleForHeapStart();
             handle.ptr += (index * self.desc_size) as u64;
             transition_barriers(
-                &cmd_list,
+                cmd_list,
                 [TransitionBarrier {
                     resource: self.buffers[index].handle().clone(),
                     subresource: 0,
@@ -847,12 +847,12 @@ impl RenderTarget {
             cmd_list.SetGraphicsRootSignature(&self.copy_texture.root_signature);
             cmd_list.SetGraphicsRootDescriptorTable(0, handle);
             cmd_list.SetPipelineState(&self.copy_texture.pipeline);
-            cmd_list.IASetVertexBuffers(0, &[self.copy_texture.plane.vbv.clone()]);
+            cmd_list.IASetVertexBuffers(0, &[self.copy_texture.plane.vbv]);
             cmd_list.IASetIndexBuffer(&self.copy_texture.plane.ibv);
             cmd_list.IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
             cmd_list.DrawIndexedInstanced(self.copy_texture.plane.indices_len() as _, 1, 0, 0, 0);
             transition_barriers(
-                &cmd_list,
+                cmd_list,
                 [TransitionBarrier {
                     resource: self.buffers[index].handle().clone(),
                     subresource: 0,
@@ -956,7 +956,7 @@ impl Ui {
             cmd_list.SetGraphicsRootSignature(&self.copy_texture.root_signature);
             cmd_list.SetPipelineState(&self.copy_texture.pipeline);
             cmd_list.SetGraphicsRootDescriptorTable(0, srv_handle);
-            cmd_list.IASetVertexBuffers(0, &[self.copy_texture.plane.vbv.clone()]);
+            cmd_list.IASetVertexBuffers(0, &[self.copy_texture.plane.vbv]);
             cmd_list.IASetIndexBuffer(&self.copy_texture.plane.ibv);
             cmd_list.IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
             cmd_list.DrawIndexedInstanced(self.copy_texture.plane.indices_len() as _, 1, 0, 0, 0);
@@ -999,12 +999,10 @@ impl Ui {
     }
 
     fn wait_all_signals(&self) {
-        for signal in self.signals.borrow().iter() {
-            if let Some(signal) = signal {
-                if !signal.is_completed() {
-                    signal.set_event(&self.wait_event).unwrap();
-                    self.wait_event.wait();
-                }
+        for signal in self.signals.borrow().iter().flatten() {
+            if !signal.is_completed() {
+                signal.set_event(&self.wait_event).unwrap();
+                self.wait_event.wait();
             }
         }
     }
@@ -1096,18 +1094,18 @@ impl Renderer {
                 &cmd_allocators[0],
                 None,
             )?;
-            cmd_list.SetName(format!("Renderer::cmd_lists"))?;
+            cmd_list.SetName("Renderer::cmd_lists")?;
             cmd_list.Close()?;
-            let copy_texture = CopyTextureShader::new(&d3d12_device, compiler, shader_model)?;
+            let copy_texture = CopyTextureShader::new(d3d12_device, compiler, shader_model)?;
             let render_target = RenderTarget::new(
-                &d3d12_device,
+                d3d12_device,
                 resolution,
                 copy_texture.clone(),
                 Self::BUFFER_COUNT,
                 clear_color,
             )?;
-            let pixel_shader = PixelShader::new(&d3d12_device, compiler, shader_model)?;
-            let ui = Ui::new(&d3d12_device, Self::BUFFER_COUNT, window, copy_texture)?;
+            let pixel_shader = PixelShader::new(d3d12_device, compiler, shader_model)?;
+            let ui = Ui::new(d3d12_device, Self::BUFFER_COUNT, window, copy_texture)?;
             Ok(Self {
                 d3d12_device: d3d12_device.clone(),
                 swap_chain,
@@ -1199,12 +1197,10 @@ impl Renderer {
     }
 
     pub fn wait_all_signals(&self) {
-        for signal in self.signals.borrow().iter() {
-            if let Some(signal) = signal {
-                if !signal.is_completed() {
-                    signal.set_event(&self.wait_event).unwrap();
-                    self.wait_event.wait();
-                }
+        for signal in self.signals.borrow().iter().flatten() {
+            if !signal.is_completed() {
+                signal.set_event(&self.wait_event).unwrap();
+                self.wait_event.wait();
             }
         }
     }

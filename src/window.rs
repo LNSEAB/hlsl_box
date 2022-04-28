@@ -125,7 +125,7 @@ impl wita::EventHandler for Window {
                 self.keys.push(ev.key_code.vkey);
                 debug!("keys: {:?}", &self.keys);
                 if let Some(m) = self.key_map.0.get(&self.keys) {
-                    self.event.send(WindowEvent::KeyInput(m.clone())).ok();
+                    self.event.send(WindowEvent::KeyInput(*m)).ok();
                 }
             }
             debug!("main_window key_input");
@@ -140,12 +140,10 @@ impl wita::EventHandler for Window {
     }
 
     fn mouse_wheel(&mut self, ev: wita::event::MouseWheel) {
-        if ev.window == &self.main_window {
-            if ev.axis == wita::MouseWheelAxis::Vertical {
-                self.event
-                    .send(WindowEvent::Wheel(-ev.distance / wita::WHEEL_DELTA))
-                    .ok();
-            }
+        if ev.window == &self.main_window && ev.axis == wita::MouseWheelAxis::Vertical {
+            self.event
+                .send(WindowEvent::Wheel(-ev.distance / wita::WHEEL_DELTA))
+                .ok();
         }
     }
 
@@ -197,7 +195,9 @@ impl wita::EventHandler for Window {
         if ev.window == &self.main_window {
             let position = self.main_window.position();
             let size = self.main_window.inner_size();
-            self.sync_event.send(WindowEvent::Closed { position, size }).unwrap_or(());
+            self.sync_event
+                .send(WindowEvent::Closed { position, size })
+                .unwrap_or(());
             debug!("main_window closed");
         }
     }

@@ -25,10 +25,7 @@ impl Blob {
 }
 
 fn create_instance<T: Interface>(clsid: &GUID) -> Result<T, Error> {
-    unsafe {
-        DxcCreateInstance(clsid)
-            .map_err(|e| e.into())
-    }
+    unsafe { DxcCreateInstance(clsid).map_err(|e| e.into()) }
 }
 
 fn create_args(
@@ -173,7 +170,7 @@ impl Compiler {
         if data.bytes().len() >= u32::MAX as _ {
             return Err(Error::FileTooLarge);
         }
-        if data.chars().find(|&c| c == '\0').is_some() {
+        if data.chars().any(|c| c == '\0') {
             return Err(Error::ReadFile(std::io::ErrorKind::UnexpectedEof.into()));
         }
         unsafe {
@@ -190,7 +187,7 @@ impl Compiler {
                 self.compiler
                     .Compile(
                         &buffer,
-                        &args,
+                        args,
                         &self.default_include_handler,
                         &IDxcResult::IID,
                         &mut result as *mut _ as _,
@@ -238,12 +235,10 @@ impl Compiler {
     ) -> Result<Blob, Error> {
         let path = path.as_ref();
         let data = {
-            let file = File::open(path).map_err(|e| Error::ReadFile(e))?;
+            let file = File::open(path).map_err(Error::ReadFile)?;
             let mut reader = BufReader::new(file);
             let mut data = String::new();
-            reader
-                .read_to_string(&mut data)
-                .map_err(|e| Error::ReadFile(e))?;
+            reader.read_to_string(&mut data).map_err(Error::ReadFile)?;
             data
         };
         let (args, _tmp) = create_args(entry_point, target, path.to_str(), args);

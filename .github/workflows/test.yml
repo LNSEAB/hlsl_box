@@ -6,23 +6,29 @@ on:
       - master
 
 jobs:
-  build_cache:
-    runs-on: windows-2019
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v3
-      - name: Load cache 
-        uses: ./.github/actions/cache_cargo
-      - name: Build
-        run: cargo build --target x86_64-pc-windows-msvc
-
   test:
     runs-on: windows-2019
-    needs: build_cache
     steps:
       - name: Checkout
         uses: actions/checkout@v3
       - name: Load cache
         uses: ./.github/actions/cache_cargo
+      - name: Toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          target: x86_64-pc-windows-msvc
+          components: rustfmt, clippy
+      - name: Format
+        uses: actions-rs/cargo@v1
+        with:
+          command: fmt
+      - name: Clippy
+        uses: actions-rs/cargo@v1
+        with:
+          command: clippy
       - name: Test
-        run: cargo test --target x86_64-pc-windows-msvc
+        uses: actions-rs/cargo@v1
+        with:
+          command: test
+          args: --target x86_64-pc-windows-msvc

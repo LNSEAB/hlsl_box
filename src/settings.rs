@@ -3,7 +3,7 @@ use std::fs::File;
 use std::io::{BufReader, BufWriter, Read, Write};
 use std::path::Path;
 
-const DEFAULT_SETTINGS: &'static str = include_str!("default_settings.toml");
+const DEFAULT_SETTINGS: &str = include_str!("default_settings.toml");
 
 #[derive(Clone, PartialEq, Eq, Debug, serde::Serialize, serde::Deserialize)]
 #[serde(into = "[u32; 2]")]
@@ -76,7 +76,7 @@ impl Settings {
         if !path.is_file() {
             let file = File::create(path)?;
             let mut writer = BufWriter::new(file);
-            writer.write(DEFAULT_SETTINGS.as_bytes())?;
+            writer.write_all(DEFAULT_SETTINGS.as_bytes())?;
             info!("create \"settings.toml\"");
         }
         let file = File::open(path)?;
@@ -89,7 +89,7 @@ impl Settings {
     pub fn save(&self, path: impl AsRef<Path>) -> anyhow::Result<()> {
         let file = File::create(path)?;
         let mut writer = BufWriter::new(file);
-        writer.write(toml::to_string(self)?.as_bytes())?;
+        writer.write_all(toml::to_string(self)?.as_bytes())?;
         Ok(())
     }
 }
