@@ -410,7 +410,7 @@ impl Application {
                 }
                 Ok(WindowEvent::Restored(size)) => {
                     debug!("WindowEvent::Restored");
-                    if let Err(e) = self.renderer.resize(size) {
+                    if let Err(e) = self.renderer.restore(size) {
                         error!("{}", e);
                     }
                 }
@@ -419,7 +419,7 @@ impl Application {
                 }
                 Ok(WindowEvent::Maximized(size)) => {
                     debug!("WindowEvent::Maximized");
-                    if let Err(e) = self.renderer.resize(size) {
+                    if let Err(e) = self.renderer.maximize(size) {
                         error!("{}", e);
                     }
                 }
