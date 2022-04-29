@@ -24,12 +24,13 @@ impl std::fmt::Display for Version {
     }
 }
 
-#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Debug, Default, serde::Serialize, serde::Deserialize)]
 pub struct Window {
     pub x: i32,
     pub y: i32,
     pub width: u32,
     pub height: u32,
+    pub maximized: bool,
 }
 
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]

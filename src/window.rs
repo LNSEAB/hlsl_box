@@ -8,10 +8,10 @@ pub enum WindowEvent {
     KeyInput(Method),
     DpiChanged(u32),
     Wheel(i32),
-    Closed {
-        position: wita::ScreenPosition,
-        size: wita::PhysicalSize<u32>,
-    },
+    Restored(wita::PhysicalSize<u32>),
+    Minimized,
+    Maximized(wita::PhysicalSize<u32>),
+    Closed(settings::Window),
 }
 
 pub struct WindowReceiver {
@@ -57,9 +57,38 @@ impl KeyboardMap {
     }
 }
 
-pub struct Window {
-    settings: Arc<Settings>,
-    main_window: wita::Window,
+struct Window {
+    window: wita::Window,
+    position: wita::ScreenPosition,
+    prev_position: wita::ScreenPosition,
+    size: wita::PhysicalSize<u32>,
+    maximized: bool,
+}
+
+impl Window {
+    fn new(window: wita::Window) -> Self {
+        let position = window.position();
+        let size = window.inner_size();
+        let maximized = window.is_maximized();
+        Self {
+            window,
+            position,
+            prev_position: position,
+            size,
+            maximized,
+        }
+    }
+}
+
+impl PartialEq<Window> for wita::Window {
+    fn eq(&self, rhs: &Window) -> bool {
+        self == &rhs.window
+    }
+}
+
+pub struct WindowManager {
+    resolution: settings::Resolution,
+    main_window: Window,
     event: mpsc::Sender<WindowEvent>,
     sync_event: mpsc::SyncSender<WindowEvent>,
     cursor_position: Arc<Mutex<wita::PhysicalPosition<i32>>>,
@@ -67,9 +96,9 @@ pub struct Window {
     keys: Vec<wita::VirtualKey>,
 }
 
-impl Window {
+impl WindowManager {
     pub fn new(
-        settings: Arc<Settings>,
+        settings: &Settings,
         key_map: KeyboardMap,
     ) -> anyhow::Result<(Self, WindowReceiver)> {
         let main_window = wita::Window::builder()
@@ -84,13 +113,16 @@ impl Window {
             ))
             .accept_drag_files(true)
             .build()?;
+        if settings.window.maximized {
+            main_window.maximize();
+        }
         let (tx, rx) = mpsc::channel();
         let (sync_tx, sync_rx) = mpsc::sync_channel(0);
         let cursor_position = Arc::new(Mutex::new(wita::PhysicalPosition::new(0, 0)));
         Ok((
             Self {
-                settings,
-                main_window: main_window.clone(),
+                resolution: settings.resolution.clone(),
+                main_window: Window::new(main_window.clone()),
                 event: tx,
                 sync_event: sync_tx,
                 cursor_position: cursor_position.clone(),
@@ -107,7 +139,7 @@ impl Window {
     }
 }
 
-impl wita::EventHandler for Window {
+impl wita::EventHandler for WindowManager {
     fn key_input(&mut self, ev: wita::event::KeyInput) {
         if ev.window == &self.main_window {
             if ev.state == wita::KeyState::Released {
@@ -156,30 +188,48 @@ impl wita::EventHandler for Window {
         }
     }
 
+    fn moved(&mut self, ev: wita::event::Moved) {
+        if ev.window == &self.main_window {
+            self.main_window.prev_position = self.main_window.position;
+            self.main_window.position = ev.position;
+        }
+    }
+
     fn resizing(&mut self, ev: wita::event::Resizing) {
         if ev.window == &self.main_window {
-            ev.size.height =
-                ev.size.width * self.settings.resolution.height / self.settings.resolution.width;
+            ev.size.height = ev.size.width * self.resolution.height / self.resolution.width;
         }
     }
 
     fn resized(&mut self, ev: wita::event::Resized) {
         if ev.window == &self.main_window {
             self.event.send(WindowEvent::Resized(ev.size)).ok();
+            self.main_window.size = ev.size;
             debug!("main_window resized");
         }
     }
 
     fn restored(&mut self, ev: wita::event::Restored) {
         if ev.window == &self.main_window {
-            self.event.send(WindowEvent::Resized(ev.size)).ok();
+            self.event.send(WindowEvent::Restored(ev.size)).ok();
+            self.main_window.maximized = self.main_window.window.is_maximized();
             debug!("main_window restored");
+        }
+    }
+
+    fn minimized(&mut self, ev: wita::event::Minimized) {
+        if ev.window == &self.main_window {
+            self.event.send(WindowEvent::Minimized).ok();
+            self.main_window.position = self.main_window.prev_position;
+            debug!("main_window minimized");
         }
     }
 
     fn maximized(&mut self, ev: wita::event::Maximized) {
         if ev.window == &self.main_window {
-            self.event.send(WindowEvent::Resized(ev.size)).ok();
+            self.event.send(WindowEvent::Maximized(ev.size)).ok();
+            self.main_window.position = self.main_window.prev_position;
+            self.main_window.maximized = true;
             debug!("main_window maximized");
         }
     }
@@ -193,10 +243,15 @@ impl wita::EventHandler for Window {
 
     fn closed(&mut self, ev: wita::event::Closed) {
         if ev.window == &self.main_window {
-            let position = self.main_window.position();
-            let size = self.main_window.inner_size();
+            let params = settings::Window {
+                x: self.main_window.position.x,
+                y: self.main_window.position.y,
+                width: self.main_window.size.width,
+                height: self.main_window.size.height,
+                maximized: self.main_window.maximized,
+            };
             self.sync_event
-                .send(WindowEvent::Closed { position, size })
+                .send(WindowEvent::Closed(params))
                 .unwrap_or(());
             debug!("main_window closed");
         }

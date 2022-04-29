@@ -8,14 +8,14 @@ use windows::Win32::{
 
 #[repr(C)]
 struct Vertex {
-    _position: [f32; 3],
+    position: [f32; 3],
     _coord: [f32; 2],
 }
 
 impl Vertex {
     const fn new(position: [f32; 3], coord: [f32; 2]) -> Self {
         Self {
-            _position: position,
+            position,
             _coord: coord,
         }
     }
@@ -31,13 +31,13 @@ struct PlaneBuffer {
 }
 
 impl PlaneBuffer {
-    const fn new() -> Self {
+    fn new(w: f32, h: f32) -> Self {
         Self {
             vertices: [
-                Vertex::new([-1.0, 1.0, 0.0], [0.0, 0.0]),
-                Vertex::new([1.0, 1.0, 0.0], [1.0, 0.0]),
-                Vertex::new([-1.0, -1.0, 0.0], [0.0, 1.0]),
-                Vertex::new([1.0, -1.0, 0.0], [1.0, 1.0]),
+                Vertex::new([-1.0 * w, 1.0 * h, 0.0], [0.0, 0.0]),
+                Vertex::new([1.0 * w, 1.0 * h, 0.0], [1.0, 0.0]),
+                Vertex::new([-1.0 * w, -1.0 * h, 0.0], [0.0, 1.0]),
+                Vertex::new([1.0 * w, -1.0 * h, 0.0], [1.0, 1.0]),
             ],
             indices: [0, 1, 2, 1, 3, 2],
         }
@@ -58,35 +58,69 @@ impl PlaneBuffer {
 
 #[derive(Clone)]
 struct Plane {
-    _buffer: Buffer,
+    buffer: Buffer,
     vbv: D3D12_VERTEX_BUFFER_VIEW,
     ibv: D3D12_INDEX_BUFFER_VIEW,
 }
 
 impl Plane {
-    fn new(device: &ID3D12Device) -> anyhow::Result<Self> {
-        const BUFFER_SIZE: u64 = std::mem::size_of::<PlaneBuffer>() as _;
+    const BUFFER_SIZE: u64 = std::mem::size_of::<PlaneBuffer>() as _;
+
+    fn new(device: &ID3D12Device, copy_queue: &CommandQueue) -> anyhow::Result<Self> {
+        let buffer = Buffer::new(
+            "Plane::buffer",
+            device,
+            HeapProperties::new(D3D12_HEAP_TYPE_DEFAULT),
+            Self::BUFFER_SIZE,
+            D3D12_RESOURCE_STATE_COMMON,
+            None,
+        )?;
+        Self::copy_buffer(device, copy_queue, &buffer, &PlaneBuffer::new(1.0, 1.0))?;
+        let vbv = D3D12_VERTEX_BUFFER_VIEW {
+            BufferLocation: buffer.gpu_virtual_address(),
+            SizeInBytes: PlaneBuffer::vertices_size() as _,
+            StrideInBytes: std::mem::size_of::<Vertex>() as _,
+        };
+        let ibv = D3D12_INDEX_BUFFER_VIEW {
+            BufferLocation: buffer.gpu_virtual_address() + PlaneBuffer::vertices_size() as u64,
+            SizeInBytes: PlaneBuffer::indicies_size() as _,
+            Format: DXGI_FORMAT_R32_UINT,
+        };
+        Ok(Self { buffer, vbv, ibv })
+    }
+
+    fn indices_len(&self) -> usize {
+        PlaneBuffer::new(1.0, 1.0).indices_len()
+    }
+
+    fn replace(
+        &self,
+        device: &ID3D12Device,
+        copy_queue: &CommandQueue,
+        plane: &PlaneBuffer,
+    ) -> anyhow::Result<()> {
+        Self::copy_buffer(device, copy_queue, &self.buffer, plane)
+    }
+
+    fn copy_buffer(
+        device: &ID3D12Device,
+        copy_queue: &CommandQueue,
+        buffer: &Buffer,
+        plane: &PlaneBuffer,
+    ) -> anyhow::Result<()> {
         unsafe {
-            let buffer = Buffer::new(
-                "Plane::buffer",
-                device,
-                HeapProperties::new(D3D12_HEAP_TYPE_DEFAULT),
-                BUFFER_SIZE,
-                D3D12_RESOURCE_STATE_COMMON,
-                None,
-            )?;
             let uploader = {
                 let uploader = Buffer::new(
                     "Plane::uploader",
                     device,
                     HeapProperties::new(D3D12_HEAP_TYPE_UPLOAD),
-                    BUFFER_SIZE + (16 - BUFFER_SIZE % 16) % 16,
+                    Self::BUFFER_SIZE + (16 - Self::BUFFER_SIZE % 16) % 16,
                     D3D12_RESOURCE_STATE_GENERIC_READ,
                     None,
                 )?;
                 {
                     let data = uploader.map()?;
-                    data.copy(&PlaneBuffer::new());
+                    data.copy(plane);
                 }
                 uploader
             };
@@ -103,7 +137,13 @@ impl Plane {
                     state_after: D3D12_RESOURCE_STATE_COPY_DEST,
                 }],
             );
-            cmd_list.CopyBufferRegion(buffer.handle(), 0, uploader.handle(), 0, BUFFER_SIZE as _);
+            cmd_list.CopyBufferRegion(
+                buffer.handle(),
+                0,
+                uploader.handle(),
+                0,
+                Self::BUFFER_SIZE as _,
+            );
             transition_barriers(
                 &cmd_list,
                 [TransitionBarrier {
@@ -114,33 +154,14 @@ impl Plane {
                 }],
             );
             cmd_list.Close()?;
-            let cmd_queue = CommandQueue::new(device, D3D12_COMMAND_LIST_TYPE_COPY)?;
-            let signal = cmd_queue.execute_command_lists(&[Some(cmd_list.cast()?)])?;
-            let vbv = D3D12_VERTEX_BUFFER_VIEW {
-                BufferLocation: buffer.gpu_virtual_address(),
-                SizeInBytes: PlaneBuffer::vertices_size() as _,
-                StrideInBytes: std::mem::size_of::<Vertex>() as _,
-            };
-            let ibv = D3D12_INDEX_BUFFER_VIEW {
-                BufferLocation: buffer.gpu_virtual_address() + PlaneBuffer::vertices_size() as u64,
-                SizeInBytes: PlaneBuffer::indicies_size() as _,
-                Format: DXGI_FORMAT_R32_UINT,
-            };
+            let signal = copy_queue.execute_command_lists(&[Some(cmd_list.cast()?)])?;
             if !signal.is_completed() {
                 let event = Event::new()?;
                 signal.set_event(&event)?;
                 event.wait();
             }
-            Ok(Self {
-                _buffer: buffer,
-                vbv,
-                ibv,
-            })
+            Ok(())
         }
-    }
-
-    fn indices_len(&self) -> usize {
-        PlaneBuffer::new().indices_len()
     }
 }
 
@@ -391,7 +412,6 @@ pub struct Parameters {
 pub struct PixelShaderPipeline(ID3D12PipelineState);
 
 struct PixelShader {
-    device: ID3D12Device,
     root_signature: ID3D12RootSignature,
     parameters: Buffer,
     plane: Plane,
@@ -403,6 +423,7 @@ impl PixelShader {
         device: &ID3D12Device,
         compiler: &hlsl::Compiler,
         shader_model: hlsl::ShaderModel,
+        copy_queue: &CommandQueue,
     ) -> anyhow::Result<Self> {
         unsafe {
             let root_signature: ID3D12RootSignature = {
@@ -451,7 +472,7 @@ impl PixelShader {
                 D3D12_RESOURCE_STATE_GENERIC_READ,
                 None,
             )?;
-            let plane = Plane::new(device)?;
+            let plane = Plane::new(device, copy_queue)?;
             let vs = compiler.compile_from_str(
                 include_str!("./shader/plane.hlsl"),
                 "main",
@@ -459,7 +480,6 @@ impl PixelShader {
                 &[],
             )?;
             Ok(Self {
-                device: device.clone(),
                 root_signature,
                 parameters,
                 plane,
@@ -468,7 +488,11 @@ impl PixelShader {
         }
     }
 
-    fn create_pipeline(&self, ps: &hlsl::Blob) -> anyhow::Result<PixelShaderPipeline> {
+    fn create_pipeline(
+        &self,
+        device: &ID3D12Device,
+        ps: &hlsl::Blob,
+    ) -> anyhow::Result<PixelShaderPipeline> {
         unsafe {
             let input_elements = [
                 D3D12_INPUT_ELEMENT_DESC {
@@ -529,7 +553,7 @@ impl PixelShader {
                 SampleDesc: SampleDesc::default().into(),
                 ..Default::default()
             };
-            self.device
+            device
                 .CreateGraphicsPipelineState(&desc)
                 .map(PixelShaderPipeline)
                 .map_err(|e| e.into())
@@ -570,9 +594,10 @@ impl CopyTextureShader {
         device: &ID3D12Device,
         compiler: &hlsl::Compiler,
         shader_model: hlsl::ShaderModel,
+        copy_queue: &CommandQueue,
     ) -> anyhow::Result<Self> {
         unsafe {
-            let plane = Plane::new(device)?;
+            let plane = Plane::new(device, copy_queue)?;
             let root_signature: ID3D12RootSignature = {
                 let ranges = [D3D12_DESCRIPTOR_RANGE {
                     RangeType: D3D12_DESCRIPTOR_RANGE_TYPE_SRV,
@@ -710,6 +735,16 @@ impl CopyTextureShader {
                 pipeline,
             })
         }
+    }
+
+    fn resize_plane(
+        &mut self,
+        device: &ID3D12Device,
+        copy_queue: &CommandQueue,
+        size: [f32; 2],
+    ) -> anyhow::Result<()> {
+        self.plane
+            .replace(device, copy_queue, &PlaneBuffer::new(size[0], size[1]))
     }
 }
 
@@ -861,6 +896,19 @@ impl RenderTarget {
                 }],
             );
         }
+    }
+
+    fn size(&self) -> wita::PhysicalSize<u32> {
+        self.size
+    }
+
+    fn resize_plane(
+        &mut self,
+        device: &ID3D12Device,
+        copy_queue: &CommandQueue,
+        size: [f32; 2],
+    ) -> anyhow::Result<()> {
+        self.copy_texture.resize_plane(device, copy_queue, size)
     }
 }
 
@@ -1064,6 +1112,7 @@ pub struct Renderer {
     wait_event: Event,
     signals: RefCell<Vec<Option<Signal>>>,
     ui: Ui,
+    copy_queue: CommandQueue,
 }
 
 impl Renderer {
@@ -1088,6 +1137,7 @@ impl Renderer {
                 cmd_allocator.SetName(format!("Renderer::cmd_allocators[{}]", i))?;
                 cmd_allocators.push(cmd_allocator);
             }
+            let copy_queue = CommandQueue::new(d3d12_device, D3D12_COMMAND_LIST_TYPE_COPY)?;
             let cmd_list: ID3D12GraphicsCommandList = d3d12_device.CreateCommandList(
                 0,
                 D3D12_COMMAND_LIST_TYPE_DIRECT,
@@ -1096,7 +1146,8 @@ impl Renderer {
             )?;
             cmd_list.SetName("Renderer::cmd_lists")?;
             cmd_list.Close()?;
-            let copy_texture = CopyTextureShader::new(d3d12_device, compiler, shader_model)?;
+            let copy_texture =
+                CopyTextureShader::new(d3d12_device, compiler, shader_model, &copy_queue)?;
             let render_target = RenderTarget::new(
                 d3d12_device,
                 resolution,
@@ -1104,7 +1155,7 @@ impl Renderer {
                 Self::BUFFER_COUNT,
                 clear_color,
             )?;
-            let pixel_shader = PixelShader::new(d3d12_device, compiler, shader_model)?;
+            let pixel_shader = PixelShader::new(d3d12_device, compiler, shader_model, &copy_queue)?;
             let ui = Ui::new(d3d12_device, Self::BUFFER_COUNT, window, copy_texture)?;
             Ok(Self {
                 d3d12_device: d3d12_device.clone(),
@@ -1116,6 +1167,7 @@ impl Renderer {
                 wait_event: Event::new()?,
                 signals: RefCell::new(vec![None; 2]),
                 ui,
+                copy_queue,
             })
         }
     }
@@ -1128,7 +1180,7 @@ impl Renderer {
         &self,
         ps: &hlsl::Blob,
     ) -> anyhow::Result<PixelShaderPipeline> {
-        self.pixel_shader.create_pipeline(ps)
+        self.pixel_shader.create_pipeline(&self.d3d12_device, ps)
     }
 
     pub fn render(
@@ -1193,6 +1245,34 @@ impl Renderer {
 
     pub fn change_dpi(&mut self, dpi: u32) -> anyhow::Result<()> {
         self.ui.change_dpi(dpi)?;
+        Ok(())
+    }
+
+    pub fn restore(&mut self, size: wita::PhysicalSize<u32>) -> anyhow::Result<()> {
+        self.wait_all_signals();
+        self.swap_chain.resize(&self.d3d12_device, size)?;
+        self.ui.resize(&self.d3d12_device, size)?;
+        self.render_target
+            .resize_plane(&self.d3d12_device, &self.copy_queue, [1.0, 1.0])?;
+        Ok(())
+    }
+
+    pub fn maximize(&mut self, size: wita::PhysicalSize<u32>) -> anyhow::Result<()> {
+        self.wait_all_signals();
+        self.swap_chain.resize(&self.d3d12_device, size)?;
+        let size = size.cast::<f32>();
+        let resolution = self.render_target.size().cast::<f32>();
+        let aspect_size = size.width / size.height;
+        let aspect_resolution = resolution.width / resolution.height;
+        let s = if aspect_resolution > aspect_size {
+            [1.0, aspect_size / aspect_resolution]
+        } else {
+            [aspect_resolution / aspect_size, 1.0]
+        };
+        self.render_target
+            .resize_plane(&self.d3d12_device, &self.copy_queue, s)?;
+        let s = wita::PhysicalSize::new((size.width * s[0]) as u32, (size.height * s[1]) as u32);
+        self.ui.resize(&self.d3d12_device, s)?;
         Ok(())
     }
 
