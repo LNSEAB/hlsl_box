@@ -1,3 +1,4 @@
 dev-version = false
 publish = false
 pre-release-commit-message = "バージョン {{version}}"
+tag-message = "version {{version}}"
