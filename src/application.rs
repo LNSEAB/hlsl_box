@@ -217,11 +217,7 @@ impl ErrorMessage {
     }
 
     fn update(&mut self, size: mltg::Size) -> anyhow::Result<()> {
-        let mut height = self
-            .layouts
-            .iter()
-            .flatten()
-            .fold(0.0, |h, l| h + l.size().height);
+        let mut height = 0.0;
         let mut index = self.current_line as usize;
         self.layouts.clear();
         while index < self.text.len() && height < size.height {
@@ -247,7 +243,7 @@ impl ErrorMessage {
             None,
         )?;
         let test = layout.hit_test(mltg::point(size.width, 0.0));
-        if !test.inside || test.text_position == 0 {
+        if !test.inside {
             v.push(layout);
             return Ok(());
         }
@@ -256,7 +252,11 @@ impl ErrorMessage {
         let mut c = cs[pos];
         if c.is_ascii() {
             loop {
-                if !c.is_ascii() || c == ' ' || pos == 0 {
+                if pos == 0 {
+                    pos = test.text_position - 1;
+                    break;
+                }
+                if !c.is_ascii() || c == ' ' {
                     break;
                 }
                 pos -= 1;
