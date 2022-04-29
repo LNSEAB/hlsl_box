@@ -492,7 +492,7 @@ impl PixelShader {
         &self,
         device: &ID3D12Device,
         ps: &hlsl::Blob,
-    ) -> anyhow::Result<PixelShaderPipeline> {
+    ) -> Result<PixelShaderPipeline, Error> {
         unsafe {
             let input_elements = [
                 D3D12_INPUT_ELEMENT_DESC {
@@ -1179,7 +1179,7 @@ impl Renderer {
     pub fn create_pixel_shader_pipeline(
         &self,
         ps: &hlsl::Blob,
-    ) -> anyhow::Result<PixelShaderPipeline> {
+    ) -> Result<PixelShaderPipeline, Error> {
         self.pixel_shader.create_pipeline(&self.d3d12_device, ps)
     }
 

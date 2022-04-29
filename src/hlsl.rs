@@ -171,7 +171,7 @@ impl Compiler {
             return Err(Error::FileTooLarge);
         }
         if data.chars().any(|c| c == '\0') {
-            return Err(Error::ReadFile(std::io::ErrorKind::UnexpectedEof.into()));
+            return Err(Error::UnexceptedEof);
         }
         unsafe {
             let src =
@@ -235,10 +235,12 @@ impl Compiler {
     ) -> Result<Blob, Error> {
         let path = path.as_ref();
         let data = {
-            let file = File::open(path).map_err(Error::ReadFile)?;
+            let file = File::open(path).map_err(|_| Error::ReadFile)?;
             let mut reader = BufReader::new(file);
             let mut data = String::new();
-            reader.read_to_string(&mut data).map_err(Error::ReadFile)?;
+            reader
+                .read_to_string(&mut data)
+                .map_err(|_| Error::ReadFile)?;
             data
         };
         let (args, _tmp) = create_args(entry_point, target, path.to_str(), args);
