@@ -1,0 +1,3 @@
+dev-version = false
+publish = false
+pre-release-commit-message = "バージョン {{version}}"
