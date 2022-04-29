@@ -218,10 +218,10 @@ impl ErrorMessage {
 
     fn update(&mut self, size: mltg::Size) -> anyhow::Result<()> {
         let mut height = self
-                .layouts
-                .iter()
-                .flatten()
-                .fold(0.0, |h, l| h + l.size().height);
+            .layouts
+            .iter()
+            .flatten()
+            .fold(0.0, |h, l| h + l.size().height);
         let mut index = self.current_line as usize;
         self.layouts.clear();
         while index < self.text.len() && height < size.height {
