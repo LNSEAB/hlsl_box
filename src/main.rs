@@ -118,7 +118,7 @@ fn main() {
             let app = Application::new(th_settings, window_receiver).and_then(|mut app| app.run());
             if let Err(e) = app {
                 main_window.close();
-                panic!("{}", e);
+                panic!("panic rendering thread: {}", e);
             }
             info!("end rendering thread");
         });

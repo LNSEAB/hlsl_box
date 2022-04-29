@@ -29,7 +29,7 @@ struct FrameCounter {
 }
 
 impl FrameCounter {
-    fn new(ui_props: &UiProperties) -> anyhow::Result<Self> {
+    fn new(ui_props: &UiProperties) -> Result<Self, Error> {
         let text_layout = ui_props.factory.create_text_layout(
             "0",
             &ui_props.text_format,
@@ -101,7 +101,7 @@ struct ErrorMessage {
     window: wita::Window,
     ui_props: UiProperties,
     text: Vec<String>,
-    layouts: VecDeque<mltg::TextLayout>,
+    layouts: VecDeque<Vec<mltg::TextLayout>>,
     current_line: u32,
 }
 
@@ -109,33 +109,31 @@ impl ErrorMessage {
     fn new(
         path: PathBuf,
         window: wita::Window,
-        text: &str,
+        e: &Error,
         ui_props: &UiProperties,
         size: mltg::Size,
     ) -> anyhow::Result<Self> {
+        let text = format!("{}", e);
         let text = text.split('\n').map(|t| t.to_string()).collect::<Vec<_>>();
-        let mut layouts = VecDeque::new();
-        let mut index = 0;
-        let mut height = 0.0;
-        while index < text.len() && height < size.height {
-            let layout = ui_props.factory.create_text_layout(
-                &text[index],
-                &ui_props.text_format,
-                mltg::TextAlignment::Leading,
-                None,
-            )?;
-            height += layout.size().height;
-            index += 1;
-            layouts.push_back(layout);
-        }
-        Ok(Self {
+        let layouts = VecDeque::new();
+        let mut this = Self {
             path,
             window,
             ui_props: ui_props.clone(),
             text,
             layouts,
             current_line: 0,
-        })
+        };
+        let mut index = 0;
+        let mut height = 0.0;
+        while index < this.text.len() && height < size.height {
+            let mut buffer = Vec::new();
+            this.create_text_layouts(&mut buffer, &this.text[index], size)?;
+            height += buffer.iter().fold(0.0, |h, l| h + l.size().height);
+            this.layouts.push_back(buffer);
+            index += 1;
+        }
+        Ok(this)
     }
 
     fn offset(&mut self, size: mltg::Size, d: i32) -> anyhow::Result<()> {
@@ -156,35 +154,43 @@ impl ErrorMessage {
         if self.current_line > line {
             let mut index = self.current_line as isize - 1;
             while index >= line as _ {
-                let layout = self.ui_props.factory.create_text_layout(
-                    &self.text[index as usize],
-                    &self.ui_props.text_format,
-                    mltg::TextAlignment::Leading,
-                    None,
-                )?;
-                self.layouts.push_front(layout);
+                let mut buffer = Vec::new();
+                self.create_text_layouts(&mut buffer, &self.text[index as usize], size)?;
+                self.layouts.push_front(buffer);
                 index -= 1;
             }
-            let mut height = self.layouts.iter().fold(0.0, |h, l| h + l.size().height);
-            while height - self.layouts.back().unwrap().size().height > size.height {
-                let layout = self.layouts.pop_back().unwrap();
-                height -= layout.size().height;
+            let mut height = self
+                .layouts
+                .iter()
+                .flatten()
+                .fold(0.0, |h, l| h + l.size().height);
+            while height
+                - self
+                    .layouts
+                    .back()
+                    .unwrap()
+                    .iter()
+                    .fold(0.0, |h, l| h + l.size().height)
+                > size.height
+            {
+                let back = self.layouts.pop_back().unwrap();
+                height -= back.iter().fold(0.0, |h, l| h + l.size().height);
             }
         } else {
-            let mut height = self.layouts.iter().fold(0.0, |h, l| h + l.size().height);
+            let mut height = self
+                .layouts
+                .iter()
+                .flatten()
+                .fold(0.0, |h, l| h + l.size().height);
             let d = line - self.current_line;
             self.layouts.drain(..d as usize);
             let mut index = line as usize + self.layouts.len();
             while index < self.text.len() && height < size.height {
-                let layout = self.ui_props.factory.create_text_layout(
-                    &self.text[index],
-                    &self.ui_props.text_format,
-                    mltg::TextAlignment::Leading,
-                    None,
-                )?;
-                height += layout.size().height;
+                let mut buffer = Vec::new();
+                self.create_text_layouts(&mut buffer, &self.text[index], size)?;
+                height += buffer.iter().fold(0.0, |h, l| h + l.size().height);
+                self.layouts.push_back(buffer);
                 index += 1;
-                self.layouts.push_back(layout);
             }
         }
         self.current_line = line;
@@ -202,10 +208,69 @@ impl ErrorMessage {
             &self.ui_props.bg_color,
         );
         let mut y = 0.0;
-        for layout in &self.layouts {
-            cmd.draw_text_layout(layout, &self.ui_props.text_color, [0.0, y]);
-            y += layout.size().height;
+        for line in &self.layouts {
+            for layout in line {
+                cmd.draw_text_layout(layout, &self.ui_props.text_color, [0.0, y]);
+                y += layout.size().height;
+            }
         }
+    }
+
+    fn update(&mut self, size: mltg::Size) -> anyhow::Result<()> {
+        let mut height = 0.0;
+        let mut index = self.current_line as usize;
+        self.layouts.clear();
+        while index < self.text.len() && height < size.height {
+            let mut buffer = Vec::new();
+            self.create_text_layouts(&mut buffer, &self.text[index], size)?;
+            height += buffer.iter().fold(0.0, |h, l| h + l.size().height);
+            self.layouts.push_back(buffer);
+            index += 1;
+        }
+        Ok(())
+    }
+
+    fn create_text_layouts(
+        &self,
+        v: &mut Vec<mltg::TextLayout>,
+        text: &str,
+        size: mltg::Size,
+    ) -> Result<(), Error> {
+        let layout = self.ui_props.factory.create_text_layout(
+            text,
+            &self.ui_props.text_format,
+            mltg::TextAlignment::Leading,
+            None,
+        )?;
+        let test = layout.hit_test(mltg::point(size.width, 0.0));
+        if !test.inside {
+            v.push(layout);
+            return Ok(());
+        }
+        let mut pos = test.text_position - 1;
+        let cs = text.chars().collect::<Vec<char>>();
+        let mut c = cs[pos];
+        if c.is_ascii() {
+            loop {
+                if pos == 0 {
+                    pos = test.text_position - 1;
+                    break;
+                }
+                if !c.is_ascii() || c == ' ' {
+                    break;
+                }
+                pos -= 1;
+                c = cs[pos];
+            }
+        }
+        let layout = self.ui_props.factory.create_text_layout(
+            &cs.iter().take(pos + 1).collect::<String>(),
+            &self.ui_props.text_format,
+            mltg::TextAlignment::Leading,
+            None,
+        )?;
+        v.push(layout);
+        self.create_text_layouts(v, &cs.iter().skip(pos + 1).collect::<String>(), size)
     }
 }
 
@@ -315,7 +380,7 @@ impl Application {
         })
     }
 
-    fn load_file(&mut self, path: &Path) -> anyhow::Result<()> {
+    fn load_file(&mut self, path: &Path) -> Result<(), Error> {
         assert!(path.is_file());
         let parent = path.parent().unwrap();
         if self.dir.as_ref().map_or(true, |d| d.path() != parent) {
@@ -407,11 +472,23 @@ impl Application {
                     if let Err(e) = self.renderer.resize(size) {
                         error!("{}", e);
                     }
+                    if let State::Error(e) = &mut self.state {
+                        let main_window = &self.window_receiver.main_window;
+                        let dpi = main_window.dpi();
+                        let size = main_window.inner_size().to_logical(dpi).cast::<f32>();
+                        e.update([size.width, size.height].into())?;
+                    }
                 }
                 Ok(WindowEvent::Restored(size)) => {
                     debug!("WindowEvent::Restored");
                     if let Err(e) = self.renderer.restore(size) {
                         error!("{}", e);
+                    }
+                    if let State::Error(e) = &mut self.state {
+                        let main_window = &self.window_receiver.main_window;
+                        let dpi = main_window.dpi();
+                        let size = size.to_logical(dpi).cast::<f32>();
+                        e.update([size.width, size.height].into())?;
                     }
                 }
                 Ok(WindowEvent::Minimized) => {
@@ -421,6 +498,12 @@ impl Application {
                     debug!("WindowEvent::Maximized");
                     if let Err(e) = self.renderer.maximize(size) {
                         error!("{}", e);
+                    }
+                    if let State::Error(e) = &mut self.state {
+                        let main_window = &self.window_receiver.main_window;
+                        let dpi = main_window.dpi();
+                        let size = size.to_logical(dpi).cast::<f32>();
+                        e.update([size.width, size.height].into())?;
                     }
                 }
                 Ok(WindowEvent::DpiChanged(dpi)) => {
@@ -484,7 +567,7 @@ impl Application {
         Ok(())
     }
 
-    fn set_error(&mut self, path: &Path, e: anyhow::Error) -> anyhow::Result<()> {
+    fn set_error(&mut self, path: &Path, e: Error) -> anyhow::Result<()> {
         let dpi = self.window_receiver.main_window.dpi();
         let size = self
             .window_receiver
@@ -495,7 +578,7 @@ impl Application {
         self.state = State::Error(ErrorMessage::new(
             path.to_path_buf(),
             self.window_receiver.main_window.clone(),
-            &format!("{}", e),
+            &e,
             &self.ui_props,
             [size.width, size.height].into(),
         )?);

@@ -17,7 +17,7 @@ pub struct DirMonitor {
 }
 
 impl DirMonitor {
-    pub fn new(path: impl AsRef<Path>) -> anyhow::Result<Self> {
+    pub fn new(path: impl AsRef<Path>) -> Result<Self, Error> {
         let (tx, rx) = mpsc::channel();
         let exit_flag = Arc::new(AtomicBool::new(false));
         let exit = exit_flag.clone();
