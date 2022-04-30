@@ -20,7 +20,7 @@ jobs:
           target: x86_64-pc-windows-msvc
           components: about
       - name: Test
-        uses: actions/cargo@v1
+        uses: actions-rs/cargo@v1
         with:
             command: test
             args: --profile production --target x86_64-pc-windows-msvc
