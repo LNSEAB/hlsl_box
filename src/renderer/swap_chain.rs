@@ -1,7 +1,38 @@
 use super::*;
 
+pub struct PresentableQueue {
+    queue: CommandQueue,
+    swap_chain: IDXGISwapChain4,
+}
+
+impl PresentableQueue {
+    fn new(queue: CommandQueue, swap_chain: &IDXGISwapChain4) -> Self {
+        Self {
+            queue,
+            swap_chain: swap_chain.clone(),
+        }
+    }
+
+    pub fn execute_command_lists(
+        &self,
+        cmd_lists: &[Option<ID3D12CommandList>],
+    ) -> anyhow::Result<Signal> {
+        self.queue.execute_command_lists(cmd_lists)
+    }
+
+    pub fn wait(&self, signal: &Signal) -> anyhow::Result<()> {
+        self.queue.wait(signal)
+    }
+
+    pub fn present(&self, interval: u32) -> anyhow::Result<Signal> {
+        unsafe {
+            self.swap_chain.Present(interval, 0)?;
+            self.queue.signal()
+        }
+    }
+}
+
 pub struct SwapChain {
-    pub cmd_queue: CommandQueue,
     swap_chain: IDXGISwapChain4,
     back_buffers: Vec<ID3D12Resource>,
     rtv_heap: ID3D12DescriptorHeap,
@@ -9,10 +40,14 @@ pub struct SwapChain {
 }
 
 impl SwapChain {
-    pub fn new(device: &ID3D12Device, window: &wita::Window, count: usize) -> anyhow::Result<Self> {
+    pub fn new(
+        device: &ID3D12Device,
+        window: &wita::Window,
+        count: usize,
+    ) -> anyhow::Result<(Self, PresentableQueue)> {
         unsafe {
             let cmd_queue = CommandQueue::new(
-                "SwapChain::cmd_queue",
+                "PresentableQueue::cmd_queue",
                 device,
                 D3D12_COMMAND_LIST_TYPE_DIRECT,
             )?;
@@ -50,13 +85,16 @@ impl SwapChain {
             let rtv_size =
                 device.GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_RTV) as usize;
             let back_buffers = Self::create_back_buffers(device, &swap_chain, &rtv_heap, rtv_size)?;
-            Ok(Self {
-                cmd_queue,
-                swap_chain,
-                back_buffers,
-                rtv_heap,
-                rtv_size,
-            })
+            let queue = PresentableQueue::new(cmd_queue, &swap_chain);
+            Ok((
+                Self {
+                    swap_chain,
+                    back_buffers,
+                    rtv_heap,
+                    rtv_size,
+                },
+                queue,
+            ))
         }
     }
 
@@ -117,13 +155,6 @@ impl SwapChain {
                 state_after: D3D12_RESOURCE_STATE_PRESENT,
             }],
         );
-    }
-
-    pub fn present(&self, interval: u32) -> anyhow::Result<Signal> {
-        unsafe {
-            self.swap_chain.Present(interval, 0)?;
-            self.cmd_queue.signal()
-        }
     }
 
     pub fn resize(

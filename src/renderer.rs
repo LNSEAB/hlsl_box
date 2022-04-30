@@ -34,6 +34,7 @@ pub struct Renderer {
     signals: RefCell<Vec<Option<Signal>>>,
     ui: Ui,
     copy_queue: CommandQueue,
+    presentable_queue: PresentableQueue,
 }
 
 impl Renderer {
@@ -49,7 +50,8 @@ impl Renderer {
         clear_color: &[f32; 4],
     ) -> anyhow::Result<Self> {
         unsafe {
-            let swap_chain = SwapChain::new(d3d12_device, window, Self::BUFFER_COUNT)?;
+            let (swap_chain, presentable_queue) =
+                SwapChain::new(d3d12_device, window, Self::BUFFER_COUNT)?;
             let mut cmd_allocators =
                 Vec::with_capacity(Self::BUFFER_COUNT * Self::ALLOCATORS_PER_FRAME);
             for i in 0..Self::BUFFER_COUNT * Self::ALLOCATORS_PER_FRAME {
@@ -93,6 +95,7 @@ impl Renderer {
                 signals: RefCell::new(vec![None; 2]),
                 ui,
                 copy_queue,
+                presentable_queue,
             })
         }
     }
@@ -137,8 +140,7 @@ impl Renderer {
             self.swap_chain.set_target(index, &self.cmd_list);
             self.render_target.copy(index, &self.cmd_list);
             self.cmd_list.Close()?;
-            self.swap_chain
-                .cmd_queue
+            self.presentable_queue
                 .execute_command_lists(&[Some(self.cmd_list.cast().unwrap())])?;
 
             cmd_allocators[1].Reset()?;
@@ -148,12 +150,11 @@ impl Renderer {
             self.swap_chain.end(index, &self.cmd_list);
             self.cmd_list.Close()?;
             let ui_signal = self.ui.render(index, r)?;
-            self.swap_chain.cmd_queue.wait(&ui_signal)?;
-            self.swap_chain
-                .cmd_queue
+            self.presentable_queue.wait(&ui_signal)?;
+            self.presentable_queue
                 .execute_command_lists(&[Some(self.cmd_list.cast().unwrap())])?;
         }
-        let signal = self.swap_chain.present(interval)?;
+        let signal = self.presentable_queue.present(interval)?;
         self.signals.borrow_mut()[index] = Some(signal);
         Ok(())
     }
