@@ -6,6 +6,9 @@ if (Test-Path -Path $dir) {
     Remove-Item -Recurse -Force -Path $dir | Out-Null
 }
 New-Item $dir -ItemType Directory | Out-Null
+
+cargo.exe about generate about.hbs > package/hlsl_box/license.html
+
 Copy-Item "dxcompiler.dll" $dir
 Copy-Item "dxil.dll" $dir
 Copy-Item "target/production/hlsl_box.exe" $dir
