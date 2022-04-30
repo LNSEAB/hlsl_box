@@ -8,7 +8,7 @@ changelog:
         - bug
     - title: その他
       labels:
-        - '*'
+        - "*"
   exclude:
     labels:
       - ignore-for-release
