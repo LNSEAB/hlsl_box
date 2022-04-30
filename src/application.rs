@@ -90,8 +90,8 @@ impl FrameCounter {
 
 struct Rendering {
     path: PathBuf,
-    parameters: Parameters,
-    ps: PixelShaderPipeline,
+    parameters: pixel_shader::Parameters,
+    ps: pixel_shader::Pipeline,
     frame_counter: FrameCounter,
     show_frame_counter: Rc<Cell<bool>>,
 }
@@ -395,7 +395,7 @@ impl Application {
         )?;
         let ps = self.renderer.create_pixel_shader_pipeline(&blob)?;
         let resolution = self.settings.resolution.clone();
-        let parameters = Parameters {
+        let parameters = pixel_shader::Parameters {
             resolution: [resolution.width as _, resolution.height as _],
             mouse: self.mouse,
             time: 0.0,
