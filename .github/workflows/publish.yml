@@ -18,7 +18,11 @@ jobs:
         with:
           toolchain: stable
           target: x86_64-pc-windows-msvc
-          components: about
+      - name: Cargo install
+        uses: actions-rs/cargo@v1
+        with:
+          command: install
+          args: --locked about
       - name: Test
         uses: actions-rs/cargo@v1
         with:
