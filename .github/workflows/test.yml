@@ -1,6 +1,9 @@
 name: test
 on:
   pull_request:
+    branches-ignore:
+      - 'releases'
+      - 'releases-**'
   push:
     branches:
       - master
