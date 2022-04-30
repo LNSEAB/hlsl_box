@@ -19,6 +19,7 @@ jobs:
           toolchain: stable
           target: x86_64-pc-windows-msvc
       - name: Cargo install
+        continue-on-error: true
         uses: actions-rs/cargo@v1
         with:
           command: install
