@@ -2,13 +2,18 @@
 name = "hlsl_box"
 version = "0.1.0"
 edition = "2021"
+authors = ["LNSEAB <691752+LNSEAB@users.noreply.github.com>"]
+license = "MIT"
+readme = "README.md"
+repository = "https://github.com/LNSEAB/hlsl_box"
+publish = false
 
 [dependencies]
 coinit = "0.1.4"
 thiserror = "1.0.30"
 wita = "0.15.3"
 ifdlg = { git = "https://github.com/LNSEAB/ifdlg" }
-libc = "0.2.124"
+libc = "0.2.125"
 anyhow = { version = "1.0.57", features = ["backtrace"] }
 mltg = "0.8.4"
 tracing = "0.1.34"

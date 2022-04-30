@@ -1,0 +1,14 @@
+changelog:
+  categories:
+    - title: 機能追加
+      labels:
+        - enhancement
+    - title: 不具合修正
+      labels:
+        - bug
+    - title: その他
+      labels:
+        - '*'
+  exclude:
+    labels:
+      - ignore-for-release
