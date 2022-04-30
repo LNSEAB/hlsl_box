@@ -2,6 +2,7 @@
 
 ピクセルシェーダで描画するだけのツール
 
+
 ## HLSLファイルの開き方
 
 いずれかの方法で開けます。
@@ -66,6 +67,14 @@ ConstantBuffer<Parameters> HLSLBox: register(b0);
 ### `float2 normalized_mouse_position()`
 
 `HLSLBox.mouse`をX軸右向きY軸上向きの-1.0から1.0の値に変換して返します。
+
+## リポジトリ
+
+[https://github.com/LNSEAB/hlsl_box](https://github.com/LNSEAB/hlsl_box)
+
+## 依存関係のライセンス一覧
+
+[license.html](license.html)
 
 -----------------------------------------------------------------------------------------
 

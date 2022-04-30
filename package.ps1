@@ -12,6 +12,7 @@ cargo.exe about generate about.hbs > package/hlsl_box/license.html
 Copy-Item "dxcompiler.dll" $dir
 Copy-Item "dxil.dll" $dir
 Copy-Item "target/production/hlsl_box.exe" $dir
+Copy-Item "README.md" $dir
 Copy-Item -Recurse -Force "include" $dir 
 Copy-Item -Recurse -Force "examples" $dir 
 
