@@ -22,7 +22,7 @@ jobs:
         uses: actions-rs/cargo@v1
         with:
           command: install
-          args: --locked about
+          args: --locked cargo-about
       - name: Test
         uses: actions-rs/cargo@v1
         with:
