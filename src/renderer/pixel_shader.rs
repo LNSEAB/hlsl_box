@@ -13,7 +13,7 @@ pub struct Pipeline(ID3D12PipelineState);
 pub struct PixelShader {
     root_signature: ID3D12RootSignature,
     parameters: Buffer,
-    plane: Plane,
+    plane: plane::Buffer,
     vs: hlsl::Blob,
 }
 
@@ -71,7 +71,7 @@ impl PixelShader {
                 D3D12_RESOURCE_STATE_GENERIC_READ,
                 None,
             )?;
-            let plane = Plane::new(device, copy_queue)?;
+            let plane = plane::Buffer::new(device, copy_queue)?;
             let vs = compiler.compile_from_str(
                 include_str!("../shader/plane.hlsl"),
                 "main",

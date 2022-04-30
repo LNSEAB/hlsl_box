@@ -18,7 +18,6 @@ use command_queue::*;
 use copy_texture_shader::*;
 pub use pixel_shader::Pipeline;
 use pixel_shader::PixelShader;
-use plane::*;
 use render_target_buffer::*;
 use swap_chain::*;
 pub use ui::RenderUi;

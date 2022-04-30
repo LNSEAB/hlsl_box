@@ -19,12 +19,12 @@ type PlaneVertices = [Vertex; 4];
 type PlaneIndices = [u32; 6];
 
 #[repr(C)]
-pub struct PlaneBuffer {
+pub struct Meshes {
     vertices: PlaneVertices,
     indices: PlaneIndices,
 }
 
-impl PlaneBuffer {
+impl Meshes {
     pub fn new(w: f32, h: f32) -> Self {
         Self {
             vertices: [
@@ -51,17 +51,17 @@ impl PlaneBuffer {
 }
 
 #[derive(Clone)]
-pub struct Plane {
-    buffer: Buffer,
+pub struct Buffer {
+    buffer: utility::Buffer,
     pub vbv: D3D12_VERTEX_BUFFER_VIEW,
     pub ibv: D3D12_INDEX_BUFFER_VIEW,
 }
 
-impl Plane {
-    const BUFFER_SIZE: u64 = std::mem::size_of::<PlaneBuffer>() as _;
+impl Buffer {
+    const BUFFER_SIZE: u64 = std::mem::size_of::<Meshes>() as _;
 
     pub fn new(device: &ID3D12Device, copy_queue: &CommandQueue) -> anyhow::Result<Self> {
-        let buffer = Buffer::new(
+        let buffer = utility::Buffer::new(
             "Plane::buffer",
             device,
             HeapProperties::new(D3D12_HEAP_TYPE_DEFAULT),
@@ -69,29 +69,29 @@ impl Plane {
             D3D12_RESOURCE_STATE_COMMON,
             None,
         )?;
-        Self::copy_buffer(device, copy_queue, &buffer, &PlaneBuffer::new(1.0, 1.0))?;
+        Self::copy_buffer(device, copy_queue, &buffer, &Meshes::new(1.0, 1.0))?;
         let vbv = D3D12_VERTEX_BUFFER_VIEW {
             BufferLocation: buffer.gpu_virtual_address(),
-            SizeInBytes: PlaneBuffer::vertices_size() as _,
+            SizeInBytes: Meshes::vertices_size() as _,
             StrideInBytes: std::mem::size_of::<Vertex>() as _,
         };
         let ibv = D3D12_INDEX_BUFFER_VIEW {
-            BufferLocation: buffer.gpu_virtual_address() + PlaneBuffer::vertices_size() as u64,
-            SizeInBytes: PlaneBuffer::indicies_size() as _,
+            BufferLocation: buffer.gpu_virtual_address() + Meshes::vertices_size() as u64,
+            SizeInBytes: Meshes::indicies_size() as _,
             Format: DXGI_FORMAT_R32_UINT,
         };
         Ok(Self { buffer, vbv, ibv })
     }
 
     pub fn indices_len(&self) -> usize {
-        PlaneBuffer::new(1.0, 1.0).indices_len()
+        Meshes::new(1.0, 1.0).indices_len()
     }
 
     pub fn replace(
         &self,
         device: &ID3D12Device,
         copy_queue: &CommandQueue,
-        plane: &PlaneBuffer,
+        plane: &Meshes,
     ) -> anyhow::Result<()> {
         Self::copy_buffer(device, copy_queue, &self.buffer, plane)
     }
@@ -99,12 +99,12 @@ impl Plane {
     fn copy_buffer(
         device: &ID3D12Device,
         copy_queue: &CommandQueue,
-        buffer: &Buffer,
-        plane: &PlaneBuffer,
+        buffer: &utility::Buffer,
+        plane: &Meshes,
     ) -> anyhow::Result<()> {
         unsafe {
             let uploader = {
-                let uploader = Buffer::new(
+                let uploader = utility::Buffer::new(
                     "Plane::uploader",
                     device,
                     HeapProperties::new(D3D12_HEAP_TYPE_UPLOAD),
