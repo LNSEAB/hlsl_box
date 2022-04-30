@@ -87,7 +87,12 @@ impl RenderTargetBuffer {
         }
     }
 
-    pub fn set_target(&self, index: usize, cmd_list: &ID3D12GraphicsCommandList, clear_color: &[f32]) {
+    pub fn set_target(
+        &self,
+        index: usize,
+        cmd_list: &ID3D12GraphicsCommandList,
+        clear_color: &[f32],
+    ) {
         unsafe {
             let mut handle = self.rtv_heap.GetCPUDescriptorHandleForHeapStart();
             handle.ptr += index * self.rtv_size;

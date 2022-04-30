@@ -1,10 +1,10 @@
 mod command_queue;
-mod plane;
-mod swap_chain;
-pub mod pixel_shader;
 mod copy_texture_shader;
-mod ui;
+pub mod pixel_shader;
+mod plane;
 mod render_target_buffer;
+mod swap_chain;
+mod ui;
 
 use crate::*;
 use std::cell::{Cell, RefCell};
@@ -15,15 +15,14 @@ use windows::Win32::{
 };
 
 use command_queue::*;
-use plane::*;
-use swap_chain::*;
-use pixel_shader::PixelShader;
-pub use pixel_shader::Pipeline;
 use copy_texture_shader::*;
+pub use pixel_shader::Pipeline;
+use pixel_shader::PixelShader;
+use plane::*;
+use render_target_buffer::*;
+use swap_chain::*;
 pub use ui::RenderUi;
 use ui::*;
-use render_target_buffer::*;
-
 
 pub struct Renderer {
     d3d12_device: ID3D12Device,
@@ -103,10 +102,7 @@ impl Renderer {
         self.ui.context.create_factory()
     }
 
-    pub fn create_pixel_shader_pipeline(
-        &self,
-        ps: &hlsl::Blob,
-    ) -> Result<Pipeline, Error> {
+    pub fn create_pixel_shader_pipeline(&self, ps: &hlsl::Blob) -> Result<Pipeline, Error> {
         self.pixel_shader.create_pipeline(&self.d3d12_device, ps)
     }
 

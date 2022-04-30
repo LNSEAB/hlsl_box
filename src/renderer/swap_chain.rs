@@ -64,7 +64,12 @@ impl SwapChain {
         unsafe { self.swap_chain.GetCurrentBackBufferIndex() as usize }
     }
 
-    pub fn begin(&self, index: usize, cmd_list: &ID3D12GraphicsCommandList, clear_color: &[f32; 4]) {
+    pub fn begin(
+        &self,
+        index: usize,
+        cmd_list: &ID3D12GraphicsCommandList,
+        clear_color: &[f32; 4],
+    ) {
         transition_barriers(
             cmd_list,
             [TransitionBarrier {
