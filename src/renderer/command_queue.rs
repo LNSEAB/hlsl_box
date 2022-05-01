@@ -11,7 +11,7 @@ impl Signal {
         unsafe { self.fence.GetCompletedValue() >= self.value }
     }
 
-    pub fn set_event(&self, event: &Event) -> anyhow::Result<()> {
+    pub fn set_event(&self, event: &Event) -> Result<(), Error> {
         unsafe {
             self.fence
                 .SetEventOnCompletion(self.value, event.handle())?;
@@ -31,7 +31,7 @@ impl CommandQueue {
         name: &str,
         device: &ID3D12Device,
         t: D3D12_COMMAND_LIST_TYPE,
-    ) -> anyhow::Result<Self> {
+    ) -> Result<Self, Error> {
         unsafe {
             let queue: ID3D12CommandQueue =
                 device.CreateCommandQueue(&D3D12_COMMAND_QUEUE_DESC {
@@ -52,14 +52,14 @@ impl CommandQueue {
     pub fn execute_command_lists(
         &self,
         cmd_lists: &[Option<ID3D12CommandList>],
-    ) -> anyhow::Result<Signal> {
+    ) -> Result<Signal, Error> {
         unsafe {
             self.queue.ExecuteCommandLists(cmd_lists);
             self.signal()
         }
     }
 
-    pub fn signal(&self) -> anyhow::Result<Signal> {
+    pub fn signal(&self) -> Result<Signal, Error> {
         unsafe {
             let value = self.value.get();
             self.queue.Signal(&self.fence, value)?;
@@ -71,7 +71,7 @@ impl CommandQueue {
         }
     }
 
-    pub fn wait(&self, signal: &Signal) -> anyhow::Result<()> {
+    pub fn wait(&self, signal: &Signal) -> Result<(), Error> {
         unsafe {
             self.queue.Wait(&signal.fence, signal.value)?;
         }

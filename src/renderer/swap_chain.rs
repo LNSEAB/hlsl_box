@@ -16,15 +16,15 @@ impl PresentableQueue {
     pub fn execute_command_lists(
         &self,
         cmd_lists: &[Option<ID3D12CommandList>],
-    ) -> anyhow::Result<Signal> {
+    ) -> Result<Signal, Error> {
         self.queue.execute_command_lists(cmd_lists)
     }
 
-    pub fn wait(&self, signal: &Signal) -> anyhow::Result<()> {
+    pub fn wait(&self, signal: &Signal) -> Result<(), Error> {
         self.queue.wait(signal)
     }
 
-    pub fn present(&self, interval: u32) -> anyhow::Result<Signal> {
+    pub fn present(&self, interval: u32) -> Result<Signal, Error> {
         unsafe {
             self.swap_chain.Present(interval, 0)?;
             self.queue.signal()
@@ -44,7 +44,7 @@ impl SwapChain {
         device: &ID3D12Device,
         window: &wita::Window,
         count: usize,
-    ) -> anyhow::Result<(Self, PresentableQueue)> {
+    ) -> Result<(Self, PresentableQueue), Error> {
         unsafe {
             let cmd_queue = CommandQueue::new(
                 "PresentableQueue::cmd_queue",
@@ -161,7 +161,7 @@ impl SwapChain {
         &mut self,
         device: &ID3D12Device,
         size: wita::PhysicalSize<u32>,
-    ) -> anyhow::Result<()> {
+    ) -> Result<(), Error> {
         self.back_buffers.clear();
         unsafe {
             self.swap_chain
@@ -177,7 +177,7 @@ impl SwapChain {
         swap_chain: &IDXGISwapChain4,
         rtv_heap: &ID3D12DescriptorHeap,
         rtv_size: usize,
-    ) -> anyhow::Result<Vec<ID3D12Resource>> {
+    ) -> Result<Vec<ID3D12Resource>, Error> {
         unsafe {
             let desc = swap_chain.GetDesc1()?;
             let mut back_buffers = Vec::with_capacity(desc.BufferCount as _);

@@ -1,4 +1,5 @@
 use std::mem::ManuallyDrop;
+use crate::error::Error;
 use windows::Win32::{
     Foundation::{CloseHandle, HANDLE},
     Graphics::{Direct3D12::*, Dxgi::Common::*},
@@ -9,7 +10,7 @@ use windows::Win32::{
 pub struct Event(HANDLE);
 
 impl Event {
-    pub fn new() -> anyhow::Result<Self> {
+    pub fn new() -> Result<Self, Error> {
         unsafe {
             let event = CreateEventW(std::ptr::null(), false, false, None)?;
             Ok(Self(event))
@@ -111,7 +112,7 @@ pub struct MappedBuffer<'a, T> {
 }
 
 impl<'a, T> MappedBuffer<'a, T> {
-    fn new(buffer: &ID3D12Resource) -> anyhow::Result<Self> {
+    fn new(buffer: &ID3D12Resource) -> Result<Self, Error> {
         unsafe {
             let mut ptr = std::ptr::null_mut();
             buffer.Map(0, std::ptr::null(), &mut ptr)?;
@@ -148,7 +149,7 @@ impl Buffer {
         size: u64,
         init_state: D3D12_RESOURCE_STATES,
         heap_flags: Option<D3D12_HEAP_FLAGS>,
-    ) -> anyhow::Result<Self> {
+    ) -> Result<Self, Error> {
         let desc = D3D12_RESOURCE_DESC {
             Dimension: D3D12_RESOURCE_DIMENSION_BUFFER,
             Width: size,
@@ -180,7 +181,7 @@ impl Buffer {
         unsafe { self.0.GetGPUVirtualAddress() }
     }
 
-    pub fn map<T>(&self) -> anyhow::Result<MappedBuffer<'_, T>> {
+    pub fn map<T>(&self) -> Result<MappedBuffer<'_, T>, Error> {
         MappedBuffer::new(&self.0)
     }
 
@@ -216,7 +217,7 @@ impl Texture2D {
         heap_flags: Option<D3D12_HEAP_FLAGS>,
         flags: Option<D3D12_RESOURCE_FLAGS>,
         clear_color: &[f32; 4],
-    ) -> anyhow::Result<Self> {
+    ) -> Result<Self, Error> {
         let heap_props = HeapProperties::new(D3D12_HEAP_TYPE_DEFAULT);
         let desc = D3D12_RESOURCE_DESC {
             Dimension: D3D12_RESOURCE_DIMENSION_TEXTURE2D,

@@ -48,7 +48,7 @@ impl Renderer {
         compiler: &hlsl::Compiler,
         shader_model: hlsl::ShaderModel,
         clear_color: &[f32; 4],
-    ) -> anyhow::Result<Self> {
+    ) -> Result<Self, Error> {
         unsafe {
             let (swap_chain, presentable_queue) =
                 SwapChain::new(d3d12_device, window, Self::BUFFER_COUNT)?;
@@ -115,7 +115,7 @@ impl Renderer {
         ps: Option<&Pipeline>,
         parameters: Option<&pixel_shader::Parameters>,
         r: &impl RenderUi,
-    ) -> anyhow::Result<()> {
+    ) -> Result<(), Error> {
         let index = self.swap_chain.current_buffer();
         if let Some(signal) = self.signals.borrow_mut()[index].take() {
             if !signal.is_completed() {
@@ -159,19 +159,19 @@ impl Renderer {
         Ok(())
     }
 
-    pub fn resize(&mut self, size: wita::PhysicalSize<u32>) -> anyhow::Result<()> {
+    pub fn resize(&mut self, size: wita::PhysicalSize<u32>) -> Result<(), Error> {
         self.wait_all_signals();
         self.swap_chain.resize(&self.d3d12_device, size)?;
         self.ui.resize(&self.d3d12_device, size)?;
         Ok(())
     }
 
-    pub fn change_dpi(&mut self, dpi: u32) -> anyhow::Result<()> {
+    pub fn change_dpi(&mut self, dpi: u32) -> Result<(), Error> {
         self.ui.change_dpi(dpi)?;
         Ok(())
     }
 
-    pub fn restore(&mut self, size: wita::PhysicalSize<u32>) -> anyhow::Result<()> {
+    pub fn restore(&mut self, size: wita::PhysicalSize<u32>) -> Result<(), Error> {
         self.wait_all_signals();
         self.swap_chain.resize(&self.d3d12_device, size)?;
         self.ui.resize(&self.d3d12_device, size)?;
@@ -180,7 +180,7 @@ impl Renderer {
         Ok(())
     }
 
-    pub fn maximize(&mut self, size: wita::PhysicalSize<u32>) -> anyhow::Result<()> {
+    pub fn maximize(&mut self, size: wita::PhysicalSize<u32>) -> Result<(), Error> {
         self.wait_all_signals();
         self.swap_chain.resize(&self.d3d12_device, size)?;
         let size = size.cast::<f32>();

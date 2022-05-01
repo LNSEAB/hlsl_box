@@ -17,7 +17,7 @@ impl RenderTargetBuffer {
         copy_texture: CopyTextureShader,
         count: usize,
         clear_color: &[f32; 4],
-    ) -> anyhow::Result<Self> {
+    ) -> Result<Self, Error> {
         unsafe {
             let rtv_heap: ID3D12DescriptorHeap =
                 device.CreateDescriptorHeap(&D3D12_DESCRIPTOR_HEAP_DESC {
@@ -164,7 +164,7 @@ impl RenderTargetBuffer {
         device: &ID3D12Device,
         copy_queue: &CommandQueue,
         size: [f32; 2],
-    ) -> anyhow::Result<()> {
+    ) -> Result<(), Error> {
         self.copy_texture.resize_plane(device, copy_queue, size)
     }
 }

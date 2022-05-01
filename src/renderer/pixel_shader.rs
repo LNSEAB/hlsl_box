@@ -23,7 +23,7 @@ impl PixelShader {
         compiler: &hlsl::Compiler,
         shader_model: hlsl::ShaderModel,
         copy_queue: &CommandQueue,
-    ) -> anyhow::Result<Self> {
+    ) -> Result<Self, Error> {
         unsafe {
             let root_signature: ID3D12RootSignature = {
                 let params = [D3D12_ROOT_PARAMETER {

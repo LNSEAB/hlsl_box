@@ -98,7 +98,7 @@ fn main() {
     let _coinit = coinit::init(coinit::APARTMENTTHREADED | coinit::DISABLE_OLE1DDE).unwrap();
     let th_handle = Rc::new(RefCell::new(None));
     let th_handle_f = th_handle.clone();
-    let f = move || -> anyhow::Result<WindowManager> {
+    let f = move || -> Result<WindowManager, Error> {
         let settings = Settings::load(SETTINGS_PATH)?;
         let mut key_map = KeyboardMap::new();
         key_map.insert(
@@ -109,7 +109,7 @@ fn main() {
             vec![wita::VirtualKey::Ctrl, wita::VirtualKey::Char('F')],
             Method::FrameCounter,
         );
-        let (window, window_receiver) = WindowManager::new(&settings, key_map).unwrap();
+        let (window, window_receiver) = WindowManager::new(&settings, key_map);
         let th_settings = settings;
         let th = std::thread::spawn(move || {
             info!("start rendering thread");
@@ -126,7 +126,7 @@ fn main() {
         Ok(window)
     };
     if let Err(e) = wita::run(wita::RunType::Wait, f) {
-        error!("{}\n{}", e, e.backtrace());
+        error!("{}", e);
     }
     th_handle.borrow_mut().take().unwrap().join().unwrap();
     info!("end");

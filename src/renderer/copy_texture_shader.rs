@@ -13,7 +13,7 @@ impl CopyTextureShader {
         compiler: &hlsl::Compiler,
         shader_model: hlsl::ShaderModel,
         copy_queue: &CommandQueue,
-    ) -> anyhow::Result<Self> {
+    ) -> Result<Self, Error> {
         unsafe {
             let plane = plane::Buffer::new(device, copy_queue)?;
             let root_signature: ID3D12RootSignature = {
@@ -160,7 +160,7 @@ impl CopyTextureShader {
         device: &ID3D12Device,
         copy_queue: &CommandQueue,
         size: [f32; 2],
-    ) -> anyhow::Result<()> {
+    ) -> Result<(), Error> {
         self.plane
             .replace(device, copy_queue, &plane::Meshes::new(size[0], size[1]))
     }

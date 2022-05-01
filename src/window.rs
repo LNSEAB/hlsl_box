@@ -100,7 +100,7 @@ impl WindowManager {
     pub fn new(
         settings: &Settings,
         key_map: KeyboardMap,
-    ) -> anyhow::Result<(Self, WindowReceiver)> {
+    ) -> (Self, WindowReceiver) {
         let main_window = wita::Window::builder()
             .title(TITLE)
             .position(wita::ScreenPosition::new(
@@ -112,14 +112,15 @@ impl WindowManager {
                 settings.window.height,
             ))
             .accept_drag_files(true)
-            .build()?;
+            .build()
+            .unwrap();
         if settings.window.maximized {
             main_window.maximize();
         }
         let (tx, rx) = mpsc::channel();
         let (sync_tx, sync_rx) = mpsc::sync_channel(0);
         let cursor_position = Arc::new(Mutex::new(wita::PhysicalPosition::new(0, 0)));
-        Ok((
+        (
             Self {
                 resolution: settings.resolution.clone(),
                 main_window: Window::new(main_window.clone()),
@@ -135,7 +136,7 @@ impl WindowManager {
                 sync_event: sync_rx,
                 cursor_position,
             },
-        ))
+        )
     }
 }
 

@@ -21,7 +21,7 @@ impl Ui {
         count: usize,
         window: &wita::Window,
         copy_texture: CopyTextureShader,
-    ) -> anyhow::Result<Self> {
+    ) -> Result<Self, Error> {
         unsafe {
             let size = window.inner_size();
             let cmd_queue = CommandQueue::new("Ui", device, D3D12_COMMAND_LIST_TYPE_DIRECT)?;
@@ -62,7 +62,7 @@ impl Ui {
         }
     }
 
-    pub fn render(&self, index: usize, r: &impl RenderUi) -> anyhow::Result<Signal> {
+    pub fn render(&self, index: usize, r: &impl RenderUi) -> Result<Signal, Error> {
         let buffer = &self.buffers[index];
         self.context.draw(&buffer.1, |cmd| {
             cmd.clear([0.0, 0.0, 0.0, 0.0]);
@@ -111,7 +111,7 @@ impl Ui {
         &mut self,
         device: &ID3D12Device,
         size: wita::PhysicalSize<u32>,
-    ) -> anyhow::Result<()> {
+    ) -> Result<(), Error> {
         let len = self.buffers.len();
         self.wait_all_signals();
         self.buffers.clear();
@@ -128,7 +128,7 @@ impl Ui {
         Ok(())
     }
 
-    pub fn change_dpi(&self, dpi: u32) -> anyhow::Result<()> {
+    pub fn change_dpi(&self, dpi: u32) -> Result<(), Error> {
         self.context.set_dpi(dpi as _);
         Ok(())
     }
@@ -150,7 +150,7 @@ impl Ui {
         count: usize,
         size: wita::PhysicalSize<u32>,
         buffers: &mut Vec<(Texture2D, mltg::d3d12::RenderTarget)>,
-    ) -> anyhow::Result<()> {
+    ) -> Result<(), Error> {
         unsafe {
             let mut handle = desc_heap.GetCPUDescriptorHandleForHeapStart();
             for i in 0..count {
