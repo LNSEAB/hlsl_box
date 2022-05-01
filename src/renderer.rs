@@ -75,8 +75,7 @@ impl Renderer {
             )?;
             cmd_list.SetName("Renderer::cmd_lists")?;
             cmd_list.Close()?;
-            let copy_texture =
-                CopyTextureShader::new(d3d12_device, compiler, shader_model)?;
+            let copy_texture = CopyTextureShader::new(d3d12_device, compiler, shader_model)?;
             let render_target = RenderTargetBuffer::new(
                 d3d12_device,
                 resolution,
@@ -139,12 +138,14 @@ impl Renderer {
                 .set_target(index, &self.cmd_list, clear_color);
             if let Some(ps) = ps {
                 if let Some(parameters) = parameters {
-                    self.pixel_shader.execute(&self.cmd_list, ps, parameters, &self.filling_plane);
+                    self.pixel_shader
+                        .execute(&self.cmd_list, ps, parameters, &self.filling_plane);
                 }
             }
             self.swap_chain.begin(index, &self.cmd_list, clear_color);
             self.swap_chain.set_target(index, &self.cmd_list);
-            self.render_target.copy(index, &self.cmd_list, &self.adjusted_plane);
+            self.render_target
+                .copy(index, &self.cmd_list, &self.adjusted_plane);
             self.cmd_list.Close()?;
             self.presentable_queue
                 .execute_command_lists(&[Some(self.cmd_list.cast().unwrap())])?;
@@ -181,7 +182,11 @@ impl Renderer {
         self.wait_all_signals();
         self.swap_chain.resize(&self.d3d12_device, size)?;
         self.ui.resize(&self.d3d12_device, size)?;
-        self.adjusted_plane.replace(&self.d3d12_device, &self.copy_queue, &plane::Meshes::new(1.0, 1.0))?;
+        self.adjusted_plane.replace(
+            &self.d3d12_device,
+            &self.copy_queue,
+            &plane::Meshes::new(1.0, 1.0),
+        )?;
         Ok(())
     }
 
@@ -197,7 +202,11 @@ impl Renderer {
         } else {
             [aspect_resolution / aspect_size, 1.0]
         };
-        self.adjusted_plane.replace(&self.d3d12_device, &self.copy_queue, &plane::Meshes::new(s[0], s[1]))?;
+        self.adjusted_plane.replace(
+            &self.d3d12_device,
+            &self.copy_queue,
+            &plane::Meshes::new(s[0], s[1]),
+        )?;
         let s = wita::PhysicalSize::new((size.width * s[0]) as u32, (size.height * s[1]) as u32);
         self.ui.resize(&self.d3d12_device, s)?;
         Ok(())

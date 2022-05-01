@@ -77,20 +77,26 @@ impl Settings {
         if !path.is_file() {
             let file = File::create(path).map_err(|_| Error::CreateFile)?;
             let mut writer = BufWriter::new(file);
-            writer.write_all(DEFAULT_SETTINGS.as_bytes()).map_err(|_| Error::CreateFile)?;
+            writer
+                .write_all(DEFAULT_SETTINGS.as_bytes())
+                .map_err(|_| Error::CreateFile)?;
             info!("create \"settings.toml\"");
         }
         let file = File::open(path).map_err(|_| Error::ReadFile)?;
         let mut reader = BufReader::new(file);
         let mut buffer = String::new();
-        reader.read_to_string(&mut buffer).map_err(|_| Error::ReadFile)?;
+        reader
+            .read_to_string(&mut buffer)
+            .map_err(|_| Error::ReadFile)?;
         Ok(toml::from_str(&buffer)?)
     }
 
     pub fn save(&self, path: impl AsRef<Path>) -> Result<(), Error> {
         let file = File::create(path).map_err(|_| Error::CreateFile)?;
         let mut writer = BufWriter::new(file);
-        writer.write_all(toml::to_string(self)?.as_bytes()).map_err(|_| Error::CreateFile)?;
+        writer
+            .write_all(toml::to_string(self)?.as_bytes())
+            .map_err(|_| Error::CreateFile)?;
         Ok(())
     }
 }

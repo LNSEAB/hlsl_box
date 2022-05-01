@@ -1,5 +1,5 @@
-use std::mem::ManuallyDrop;
 use crate::error::Error;
+use std::mem::ManuallyDrop;
 use windows::Win32::{
     Foundation::{CloseHandle, HANDLE},
     Graphics::{Direct3D12::*, Dxgi::Common::*},

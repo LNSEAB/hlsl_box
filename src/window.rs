@@ -97,10 +97,7 @@ pub struct WindowManager {
 }
 
 impl WindowManager {
-    pub fn new(
-        settings: &Settings,
-        key_map: KeyboardMap,
-    ) -> (Self, WindowReceiver) {
+    pub fn new(settings: &Settings, key_map: KeyboardMap) -> (Self, WindowReceiver) {
         let main_window = wita::Window::builder()
             .title(TITLE)
             .position(wita::ScreenPosition::new(
