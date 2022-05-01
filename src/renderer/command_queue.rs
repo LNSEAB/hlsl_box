@@ -20,6 +20,44 @@ impl Signal {
     }
 }
 
+pub struct Signals {
+    signals: RefCell<Vec<Option<Signal>>>,
+    event: Event,
+}
+
+impl Signals {
+    pub fn new(n: usize) -> Self {
+        Self {
+            signals: RefCell::new(vec![None; n]),
+            event: Event::new().unwrap(),
+        }
+    }
+
+    pub fn set(&self, index: usize, signal: Signal) {
+        self.signals.borrow_mut()[index] = Some(signal);
+    }
+
+    pub fn wait(&self, index: usize) {
+        if let Some(signal) = self.signals.borrow_mut()[index].take() {
+            if !signal.is_completed() {
+                signal.set_event(&self.event).unwrap();
+                self.event.wait();
+            }
+        }
+    }
+
+    pub fn wait_all(&self) {
+        let event = Event::new().unwrap();
+        let mut signals = self.signals.borrow_mut();
+        for signal in signals.iter_mut().map(|s| s.take()).flatten() {
+            if !signal.is_completed() {
+                signal.set_event(&event).unwrap();
+                event.wait();
+            }
+        }
+    }
+}
+
 pub struct CommandQueue {
     queue: ID3D12CommandQueue,
     fence: ID3D12Fence,

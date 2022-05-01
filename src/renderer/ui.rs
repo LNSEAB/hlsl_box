@@ -11,8 +11,7 @@ pub struct Ui {
     desc_size: usize,
     buffers: Vec<(Texture2D, mltg::d3d12::RenderTarget)>,
     copy_texture: CopyTextureShader,
-    signals: RefCell<Vec<Option<Signal>>>,
-    wait_event: Event,
+    signals: Signals,
 }
 
 impl Ui {
@@ -48,7 +47,7 @@ impl Ui {
                 size,
                 &mut buffers,
             )?;
-            let signals = RefCell::new(vec![None; count]);
+            let signals = Signals::new(count);
             Ok(Self {
                 context,
                 cmd_queue,
@@ -57,7 +56,6 @@ impl Ui {
                 buffers,
                 copy_texture,
                 signals,
-                wait_event: Event::new()?,
             })
         }
     }
@@ -69,7 +67,7 @@ impl Ui {
             r.render(cmd);
         })?;
         let signal = self.cmd_queue.signal()?;
-        self.signals.borrow_mut()[index] = Some(signal.clone());
+        self.signals.set(index, signal.clone());
         Ok(signal)
     }
 
@@ -113,7 +111,7 @@ impl Ui {
         size: wita::PhysicalSize<u32>,
     ) -> Result<(), Error> {
         let len = self.buffers.len();
-        self.wait_all_signals();
+        self.signals.wait_all();
         self.buffers.clear();
         self.context.flush();
         Self::create_buffers(
@@ -131,15 +129,6 @@ impl Ui {
     pub fn change_dpi(&self, dpi: u32) -> Result<(), Error> {
         self.context.set_dpi(dpi as _);
         Ok(())
-    }
-
-    pub fn wait_all_signals(&self) {
-        for signal in self.signals.borrow().iter().flatten() {
-            if !signal.is_completed() {
-                signal.set_event(&self.wait_event).unwrap();
-                self.wait_event.wait();
-            }
-        }
     }
 
     fn create_buffers(
@@ -191,6 +180,6 @@ impl Ui {
 
 impl Drop for Ui {
     fn drop(&mut self) {
-        self.wait_all_signals();
+        self.signals.wait_all();
     }
 }

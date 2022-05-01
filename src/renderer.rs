@@ -30,8 +30,7 @@ pub struct Renderer {
     pixel_shader: PixelShader,
     cmd_allocators: Vec<ID3D12CommandAllocator>,
     cmd_list: ID3D12GraphicsCommandList,
-    wait_event: Event,
-    signals: RefCell<Vec<Option<Signal>>>,
+    signals: Signals,
     ui: Ui,
     copy_queue: CommandQueue,
     presentable_queue: PresentableQueue,
@@ -94,8 +93,7 @@ impl Renderer {
                 pixel_shader,
                 cmd_allocators,
                 cmd_list,
-                wait_event: Event::new()?,
-                signals: RefCell::new(vec![None; 2]),
+                signals: Signals::new(2),
                 ui,
                 copy_queue,
                 presentable_queue,
@@ -122,12 +120,7 @@ impl Renderer {
         r: &impl RenderUi,
     ) -> Result<(), Error> {
         let index = self.swap_chain.current_buffer();
-        if let Some(signal) = self.signals.borrow_mut()[index].take() {
-            if !signal.is_completed() {
-                signal.set_event(&self.wait_event)?;
-                self.wait_event.wait();
-            }
-        }
+        self.signals.wait(index);
         let current_index = index * Self::ALLOCATORS_PER_FRAME;
         let cmd_allocators =
             &self.cmd_allocators[current_index..current_index + Self::ALLOCATORS_PER_FRAME];
@@ -162,7 +155,7 @@ impl Renderer {
                 .execute_command_lists(&[Some(self.cmd_list.cast().unwrap())])?;
         }
         let signal = self.presentable_queue.present(interval)?;
-        self.signals.borrow_mut()[index] = Some(signal);
+        self.signals.set(index, signal);
         Ok(())
     }
 
@@ -213,12 +206,7 @@ impl Renderer {
     }
 
     pub fn wait_all_signals(&self) {
-        for signal in self.signals.borrow().iter().flatten() {
-            if !signal.is_completed() {
-                signal.set_event(&self.wait_event).unwrap();
-                self.wait_event.wait();
-            }
-        }
+        self.signals.wait_all();
     }
 }
 
