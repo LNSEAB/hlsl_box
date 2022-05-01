@@ -73,7 +73,7 @@ impl Ui {
         Ok(signal)
     }
 
-    pub fn copy(&self, index: usize, cmd_list: &ID3D12GraphicsCommandList) {
+    pub fn copy(&self, index: usize, cmd_list: &ID3D12GraphicsCommandList, plane: &plane::Buffer) {
         let buffer = &self.buffers[index];
         unsafe {
             let mut srv_handle = self.desc_heap.GetGPUDescriptorHandleForHeapStart();
@@ -91,10 +91,10 @@ impl Ui {
             cmd_list.SetGraphicsRootSignature(&self.copy_texture.root_signature);
             cmd_list.SetPipelineState(&self.copy_texture.pipeline);
             cmd_list.SetGraphicsRootDescriptorTable(0, srv_handle);
-            cmd_list.IASetVertexBuffers(0, &[self.copy_texture.plane.vbv]);
-            cmd_list.IASetIndexBuffer(&self.copy_texture.plane.ibv);
+            cmd_list.IASetVertexBuffers(0, &[plane.vbv]);
+            cmd_list.IASetIndexBuffer(&plane.ibv);
             cmd_list.IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
-            cmd_list.DrawIndexedInstanced(self.copy_texture.plane.indices_len() as _, 1, 0, 0, 0);
+            cmd_list.DrawIndexedInstanced(plane.indices_len() as _, 1, 0, 0, 0);
             transition_barriers(
                 cmd_list,
                 [TransitionBarrier {

@@ -122,7 +122,7 @@ impl RenderTargetBuffer {
         }
     }
 
-    pub fn copy(&self, index: usize, cmd_list: &ID3D12GraphicsCommandList) {
+    pub fn copy(&self, index: usize, cmd_list: &ID3D12GraphicsCommandList, plane: &plane::Buffer) {
         unsafe {
             let mut handle = self.desc_heap.GetGPUDescriptorHandleForHeapStart();
             handle.ptr += (index * self.desc_size) as u64;
@@ -139,10 +139,10 @@ impl RenderTargetBuffer {
             cmd_list.SetGraphicsRootSignature(&self.copy_texture.root_signature);
             cmd_list.SetGraphicsRootDescriptorTable(0, handle);
             cmd_list.SetPipelineState(&self.copy_texture.pipeline);
-            cmd_list.IASetVertexBuffers(0, &[self.copy_texture.plane.vbv]);
-            cmd_list.IASetIndexBuffer(&self.copy_texture.plane.ibv);
+            cmd_list.IASetVertexBuffers(0, &[plane.vbv]);
+            cmd_list.IASetIndexBuffer(&plane.ibv);
             cmd_list.IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
-            cmd_list.DrawIndexedInstanced(self.copy_texture.plane.indices_len() as _, 1, 0, 0, 0);
+            cmd_list.DrawIndexedInstanced(plane.indices_len() as _, 1, 0, 0, 0);
             transition_barriers(
                 cmd_list,
                 [TransitionBarrier {
@@ -157,14 +157,5 @@ impl RenderTargetBuffer {
 
     pub fn size(&self) -> wita::PhysicalSize<u32> {
         self.size
-    }
-
-    pub fn resize_plane(
-        &mut self,
-        device: &ID3D12Device,
-        copy_queue: &CommandQueue,
-        size: [f32; 2],
-    ) -> Result<(), Error> {
-        self.copy_texture.resize_plane(device, copy_queue, size)
     }
 }

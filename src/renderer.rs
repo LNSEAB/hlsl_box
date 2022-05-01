@@ -35,6 +35,8 @@ pub struct Renderer {
     ui: Ui,
     copy_queue: CommandQueue,
     presentable_queue: PresentableQueue,
+    filling_plane: plane::Buffer,
+    adjusted_plane: plane::Buffer,
 }
 
 impl Renderer {
@@ -74,7 +76,7 @@ impl Renderer {
             cmd_list.SetName("Renderer::cmd_lists")?;
             cmd_list.Close()?;
             let copy_texture =
-                CopyTextureShader::new(d3d12_device, compiler, shader_model, &copy_queue)?;
+                CopyTextureShader::new(d3d12_device, compiler, shader_model)?;
             let render_target = RenderTargetBuffer::new(
                 d3d12_device,
                 resolution,
@@ -82,8 +84,10 @@ impl Renderer {
                 Self::BUFFER_COUNT,
                 clear_color,
             )?;
-            let pixel_shader = PixelShader::new(d3d12_device, compiler, shader_model, &copy_queue)?;
+            let pixel_shader = PixelShader::new(d3d12_device, compiler, shader_model)?;
             let ui = Ui::new(d3d12_device, Self::BUFFER_COUNT, window, copy_texture)?;
+            let filling_plane = plane::Buffer::new(&d3d12_device, &copy_queue)?;
+            let adjusted_plane = plane::Buffer::new(&d3d12_device, &copy_queue)?;
             Ok(Self {
                 d3d12_device: d3d12_device.clone(),
                 swap_chain,
@@ -96,6 +100,8 @@ impl Renderer {
                 ui,
                 copy_queue,
                 presentable_queue,
+                filling_plane,
+                adjusted_plane,
             })
         }
     }
@@ -133,12 +139,12 @@ impl Renderer {
                 .set_target(index, &self.cmd_list, clear_color);
             if let Some(ps) = ps {
                 if let Some(parameters) = parameters {
-                    self.pixel_shader.execute(&self.cmd_list, ps, parameters);
+                    self.pixel_shader.execute(&self.cmd_list, ps, parameters, &self.filling_plane);
                 }
             }
             self.swap_chain.begin(index, &self.cmd_list, clear_color);
             self.swap_chain.set_target(index, &self.cmd_list);
-            self.render_target.copy(index, &self.cmd_list);
+            self.render_target.copy(index, &self.cmd_list, &self.adjusted_plane);
             self.cmd_list.Close()?;
             self.presentable_queue
                 .execute_command_lists(&[Some(self.cmd_list.cast().unwrap())])?;
@@ -146,7 +152,7 @@ impl Renderer {
             cmd_allocators[1].Reset()?;
             self.cmd_list.Reset(&cmd_allocators[1], None)?;
             self.swap_chain.set_target(index, &self.cmd_list);
-            self.ui.copy(index, &self.cmd_list);
+            self.ui.copy(index, &self.cmd_list, &self.adjusted_plane);
             self.swap_chain.end(index, &self.cmd_list);
             self.cmd_list.Close()?;
             let ui_signal = self.ui.render(index, r)?;
@@ -175,8 +181,7 @@ impl Renderer {
         self.wait_all_signals();
         self.swap_chain.resize(&self.d3d12_device, size)?;
         self.ui.resize(&self.d3d12_device, size)?;
-        self.render_target
-            .resize_plane(&self.d3d12_device, &self.copy_queue, [1.0, 1.0])?;
+        self.adjusted_plane.replace(&self.d3d12_device, &self.copy_queue, &plane::Meshes::new(1.0, 1.0))?;
         Ok(())
     }
 
@@ -192,8 +197,7 @@ impl Renderer {
         } else {
             [aspect_resolution / aspect_size, 1.0]
         };
-        self.render_target
-            .resize_plane(&self.d3d12_device, &self.copy_queue, s)?;
+        self.adjusted_plane.replace(&self.d3d12_device, &self.copy_queue, &plane::Meshes::new(s[0], s[1]))?;
         let s = wita::PhysicalSize::new((size.width * s[0]) as u32, (size.height * s[1]) as u32);
         self.ui.resize(&self.d3d12_device, s)?;
         Ok(())

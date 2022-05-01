@@ -2,7 +2,6 @@ use super::*;
 
 #[derive(Clone)]
 pub struct CopyTextureShader {
-    pub plane: plane::Buffer,
     pub root_signature: ID3D12RootSignature,
     pub pipeline: ID3D12PipelineState,
 }
@@ -12,10 +11,8 @@ impl CopyTextureShader {
         device: &ID3D12Device,
         compiler: &hlsl::Compiler,
         shader_model: hlsl::ShaderModel,
-        copy_queue: &CommandQueue,
     ) -> Result<Self, Error> {
         unsafe {
-            let plane = plane::Buffer::new(device, copy_queue)?;
             let root_signature: ID3D12RootSignature = {
                 let ranges = [D3D12_DESCRIPTOR_RANGE {
                     RangeType: D3D12_DESCRIPTOR_RANGE_TYPE_SRV,
@@ -148,20 +145,9 @@ impl CopyTextureShader {
                 device.CreateGraphicsPipelineState(&desc)?
             };
             Ok(Self {
-                plane,
                 root_signature,
                 pipeline,
             })
         }
-    }
-
-    pub fn resize_plane(
-        &mut self,
-        device: &ID3D12Device,
-        copy_queue: &CommandQueue,
-        size: [f32; 2],
-    ) -> Result<(), Error> {
-        self.plane
-            .replace(device, copy_queue, &plane::Meshes::new(size[0], size[1]))
     }
 }

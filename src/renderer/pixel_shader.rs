@@ -13,7 +13,6 @@ pub struct Pipeline(ID3D12PipelineState);
 pub struct PixelShader {
     root_signature: ID3D12RootSignature,
     parameters: Buffer,
-    plane: plane::Buffer,
     vs: hlsl::Blob,
 }
 
@@ -22,7 +21,6 @@ impl PixelShader {
         device: &ID3D12Device,
         compiler: &hlsl::Compiler,
         shader_model: hlsl::ShaderModel,
-        copy_queue: &CommandQueue,
     ) -> Result<Self, Error> {
         unsafe {
             let root_signature: ID3D12RootSignature = {
@@ -71,7 +69,6 @@ impl PixelShader {
                 D3D12_RESOURCE_STATE_GENERIC_READ,
                 None,
             )?;
-            let plane = plane::Buffer::new(device, copy_queue)?;
             let vs = compiler.compile_from_str(
                 include_str!("../shader/plane.hlsl"),
                 "main",
@@ -81,7 +78,6 @@ impl PixelShader {
             Ok(Self {
                 root_signature,
                 parameters,
-                plane,
                 vs,
             })
         }
@@ -164,6 +160,7 @@ impl PixelShader {
         cmd_list: &ID3D12GraphicsCommandList,
         pipeline: &Pipeline,
         parameters: &Parameters,
+        plane: &plane::Buffer,
     ) {
         unsafe {
             let data = self.parameters.map().unwrap();
@@ -174,9 +171,9 @@ impl PixelShader {
             cmd_list.SetPipelineState(&pipeline.0);
             cmd_list.SetGraphicsRootConstantBufferView(0, self.parameters.gpu_virtual_address());
             cmd_list.IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
-            cmd_list.IASetVertexBuffers(0, &[self.plane.vbv]);
-            cmd_list.IASetIndexBuffer(&self.plane.ibv);
-            cmd_list.DrawIndexedInstanced(self.plane.indices_len() as _, 1, 0, 0, 0);
+            cmd_list.IASetVertexBuffers(0, &[plane.vbv]);
+            cmd_list.IASetIndexBuffer(&plane.ibv);
+            cmd_list.DrawIndexedInstanced(plane.indices_len() as _, 1, 0, 0, 0);
         }
     }
 }
