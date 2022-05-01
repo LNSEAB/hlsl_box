@@ -85,8 +85,8 @@ impl Renderer {
             )?;
             let pixel_shader = PixelShader::new(d3d12_device, compiler, shader_model)?;
             let ui = Ui::new(d3d12_device, Self::BUFFER_COUNT, window, copy_texture)?;
-            let filling_plane = plane::Buffer::new(&d3d12_device, &copy_queue)?;
-            let adjusted_plane = plane::Buffer::new(&d3d12_device, &copy_queue)?;
+            let filling_plane = plane::Buffer::new(d3d12_device, &copy_queue)?;
+            let adjusted_plane = plane::Buffer::new(d3d12_device, &copy_queue)?;
             Ok(Self {
                 d3d12_device: d3d12_device.clone(),
                 swap_chain,
