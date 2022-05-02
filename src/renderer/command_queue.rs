@@ -47,12 +47,11 @@ impl Signals {
     }
 
     pub fn wait_all(&self) {
-        let event = Event::new().unwrap();
         let mut signals = self.signals.borrow_mut();
         for signal in signals.iter_mut().map(|s| s.take()).flatten() {
             if !signal.is_completed() {
-                signal.set_event(&event).unwrap();
-                event.wait();
+                signal.set_event(&self.event).unwrap();
+                self.event.wait();
             }
         }
     }

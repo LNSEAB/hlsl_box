@@ -234,7 +234,7 @@ impl Renderer {
         cmd_list.reset(&cmd_allocators[0])?;
         if let Some(ps) = ps {
             if let Some(parameters) = parameters {
-                let shader = self.pixel_shader.apply(&ps, &parameters);
+                let shader = self.pixel_shader.apply(ps, parameters);
                 let target = self.render_target.target(index);
                 cmd_list.barrier([target.enter()]);
                 cmd_list.clear(&target, clear_color);

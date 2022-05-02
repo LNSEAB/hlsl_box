@@ -73,7 +73,7 @@ fn main() {
             .payload()
             .downcast_ref::<String>()
             .map(|s| s.as_str())
-            .or_else(|| info.payload().downcast_ref::<&str>().map(|s| *s));
+            .or_else(|| info.payload().downcast_ref::<&str>().copied());
         match msg {
             Some(msg) => {
                 let s = match info.location() {

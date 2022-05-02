@@ -403,14 +403,13 @@ impl Application {
             time: 0.0,
         };
         let frame_counter = FrameCounter::new(&self.ui_props)?;
-        self.renderer.wait_all_signals();
-        self.state = State::Rendering(Rendering {
+        self.set_state(State::Rendering(Rendering {
             path: path.to_path_buf(),
             parameters,
             ps,
             frame_counter,
             show_frame_counter: self.show_frame_counter.clone(),
-        });
+        }));
         self.start_time = std::time::Instant::now();
         self.window_receiver
             .main_window
@@ -577,14 +576,19 @@ impl Application {
             .inner_size()
             .to_logical(dpi)
             .cast::<f32>();
-        self.state = State::Error(ErrorMessage::new(
+        self.set_state(State::Error(ErrorMessage::new(
             path.to_path_buf(),
             self.window_receiver.main_window.clone(),
             &e,
             &self.ui_props,
             [size.width, size.height].into(),
-        )?);
+        )?));
         error!("{}", e);
         Ok(())
+    }
+
+    fn set_state(&mut self, new_state: State) {
+        self.renderer.wait_all_signals();
+        self.state = new_state;
     }
 }
