@@ -51,7 +51,7 @@ impl DirMonitor {
         dir_path: PathBuf,
         exit: Arc<AtomicBool>,
         tx: mpsc::Sender<PathBuf>,
-    ) -> anyhow::Result<()> {
+    ) -> Result<(), Error> {
         assert!(dir_path.is_dir());
         let path = dir_path.to_string_lossy().to_string();
         let dir = CreateFileW(

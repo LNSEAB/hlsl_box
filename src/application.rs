@@ -49,7 +49,7 @@ impl FrameCounter {
         self.t.set(std::time::Instant::now());
     }
 
-    fn update(&self) -> anyhow::Result<()> {
+    fn update(&self) -> Result<(), Error> {
         if (std::time::Instant::now() - self.t.get()).as_millis() >= 1000 {
             let text_layout = self.ui_props.factory.create_text_layout(
                 &self.count.get().to_string(),
@@ -90,8 +90,8 @@ impl FrameCounter {
 
 struct Rendering {
     path: PathBuf,
-    parameters: Parameters,
-    ps: PixelShaderPipeline,
+    parameters: pixel_shader::Parameters,
+    ps: pixel_shader::Pipeline,
     frame_counter: FrameCounter,
     show_frame_counter: Rc<Cell<bool>>,
 }
@@ -112,7 +112,7 @@ impl ErrorMessage {
         e: &Error,
         ui_props: &UiProperties,
         size: mltg::Size,
-    ) -> anyhow::Result<Self> {
+    ) -> Result<Self, Error> {
         let text = format!("{}", e);
         let text = text.split('\n').map(|t| t.to_string()).collect::<Vec<_>>();
         let layouts = VecDeque::new();
@@ -136,7 +136,7 @@ impl ErrorMessage {
         Ok(this)
     }
 
-    fn offset(&mut self, size: mltg::Size, d: i32) -> anyhow::Result<()> {
+    fn offset(&mut self, size: mltg::Size, d: i32) -> Result<(), Error> {
         let mut line = self.current_line;
         if d < 0 {
             let d = d.abs() as u32;
@@ -216,7 +216,7 @@ impl ErrorMessage {
         }
     }
 
-    fn update(&mut self, size: mltg::Size) -> anyhow::Result<()> {
+    fn update(&mut self, size: mltg::Size) -> Result<(), Error> {
         let mut height = 0.0;
         let mut index = self.current_line as usize;
         self.layouts.clear();
@@ -314,7 +314,7 @@ pub struct Application {
 }
 
 impl Application {
-    pub fn new(settings: Settings, window_receiver: WindowReceiver) -> anyhow::Result<Self> {
+    pub fn new(settings: Settings, window_receiver: WindowReceiver) -> Result<Self, Error> {
         let args = std::env::args().collect::<Vec<_>>();
         let compiler = hlsl::Compiler::new()?;
         let debug_layer = args.iter().any(|arg| arg == "--debuglayer");
@@ -393,9 +393,11 @@ impl Application {
             hlsl::Target::PS(self.shader_model),
             &self.settings.shader.ps_args,
         )?;
-        let ps = self.renderer.create_pixel_shader_pipeline(&blob)?;
+        let ps = self
+            .renderer
+            .create_pixel_shader_pipeline(&format!("{}", path.display()), &blob)?;
         let resolution = self.settings.resolution.clone();
-        let parameters = Parameters {
+        let parameters = pixel_shader::Parameters {
             resolution: [resolution.width as _, resolution.height as _],
             mouse: self.mouse,
             time: 0.0,
@@ -417,7 +419,7 @@ impl Application {
         Ok(())
     }
 
-    pub fn run(&mut self) -> anyhow::Result<()> {
+    pub fn run(&mut self) -> Result<(), Error> {
         loop {
             let sync_event = self.window_receiver.sync_event.try_recv();
             if let Ok(WindowEvent::Closed(window)) = sync_event {
@@ -551,14 +553,14 @@ impl Application {
             let ret = match &self.state {
                 State::Rendering(r) => self.renderer.render(
                     1,
-                    &self.clear_color,
+                    self.clear_color,
                     Some(&r.ps),
                     Some(&r.parameters),
                     &self.state,
                 ),
                 _ => self
                     .renderer
-                    .render(1, &self.clear_color, None, None, &self.state),
+                    .render(1, self.clear_color, None, None, &self.state),
             };
             if let Err(e) = ret {
                 error!("render: {}", e);
@@ -567,7 +569,7 @@ impl Application {
         Ok(())
     }
 
-    fn set_error(&mut self, path: &Path, e: Error) -> anyhow::Result<()> {
+    fn set_error(&mut self, path: &Path, e: Error) -> Result<(), Error> {
         let dpi = self.window_receiver.main_window.dpi();
         let size = self
             .window_receiver

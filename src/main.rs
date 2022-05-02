@@ -69,7 +69,12 @@ fn main() {
         use windows::Win32::UI::WindowsAndMessaging::*;
 
         let args = std::env::args().collect::<Vec<_>>();
-        match info.payload().downcast_ref::<String>() {
+        let msg = info
+            .payload()
+            .downcast_ref::<String>()
+            .map(|s| s.as_str())
+            .or_else(|| info.payload().downcast_ref::<&str>().map(|s| *s));
+        match msg {
             Some(msg) => {
                 let s = match info.location() {
                     Some(loc) => format!("{} ({}:{})", msg, loc.file(), loc.line()),
@@ -98,7 +103,7 @@ fn main() {
     let _coinit = coinit::init(coinit::APARTMENTTHREADED | coinit::DISABLE_OLE1DDE).unwrap();
     let th_handle = Rc::new(RefCell::new(None));
     let th_handle_f = th_handle.clone();
-    let f = move || -> anyhow::Result<WindowManager> {
+    let f = move || -> Result<WindowManager, Error> {
         let settings = Settings::load(SETTINGS_PATH)?;
         let mut key_map = KeyboardMap::new();
         key_map.insert(
@@ -109,7 +114,7 @@ fn main() {
             vec![wita::VirtualKey::Ctrl, wita::VirtualKey::Char('F')],
             Method::FrameCounter,
         );
-        let (window, window_receiver) = WindowManager::new(&settings, key_map).unwrap();
+        let (window, window_receiver) = WindowManager::new(&settings, key_map);
         let th_settings = settings;
         let th = std::thread::spawn(move || {
             info!("start rendering thread");
@@ -126,7 +131,7 @@ fn main() {
         Ok(window)
     };
     if let Err(e) = wita::run(wita::RunType::Wait, f) {
-        error!("{}\n{}", e, e.backtrace());
+        error!("{}", e);
     }
     th_handle.borrow_mut().take().unwrap().join().unwrap();
     info!("end");
