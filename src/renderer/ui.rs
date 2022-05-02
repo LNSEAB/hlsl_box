@@ -10,17 +10,11 @@ pub struct Ui {
     desc_heap: ID3D12DescriptorHeap,
     desc_size: usize,
     buffers: Vec<(Texture2D, mltg::d3d12::RenderTarget)>,
-    copy_texture: CopyTextureShader,
     signals: Signals,
 }
 
 impl Ui {
-    pub fn new(
-        device: &ID3D12Device,
-        count: usize,
-        window: &wita::Window,
-        copy_texture: CopyTextureShader,
-    ) -> Result<Self, Error> {
+    pub fn new(device: &ID3D12Device, count: usize, window: &wita::Window) -> Result<Self, Error> {
         unsafe {
             let size = window.inner_size();
             let cmd_queue = CommandQueue::new("Ui", device, D3D12_COMMAND_LIST_TYPE_DIRECT)?;
@@ -54,7 +48,6 @@ impl Ui {
                 desc_heap,
                 desc_size,
                 buffers,
-                copy_texture,
                 signals,
             })
         }
@@ -71,37 +64,15 @@ impl Ui {
         Ok(signal)
     }
 
-    pub fn copy(&self, index: usize, cmd_list: &ID3D12GraphicsCommandList, plane: &plane::Buffer) {
-        let buffer = &self.buffers[index];
+    pub fn source(&self, index: usize) -> ShaderResource {
         unsafe {
-            let mut srv_handle = self.desc_heap.GetGPUDescriptorHandleForHeapStart();
-            srv_handle.ptr += (index * self.desc_size) as u64;
-            transition_barriers(
-                cmd_list,
-                [TransitionBarrier {
-                    resource: buffer.0.handle().clone(),
-                    subresource: 0,
-                    state_before: D3D12_RESOURCE_STATE_COMMON,
-                    state_after: D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE,
-                }],
-            );
-            cmd_list.SetDescriptorHeaps(&[Some(self.desc_heap.clone())]);
-            cmd_list.SetGraphicsRootSignature(&self.copy_texture.root_signature);
-            cmd_list.SetPipelineState(&self.copy_texture.pipeline);
-            cmd_list.SetGraphicsRootDescriptorTable(0, srv_handle);
-            cmd_list.IASetVertexBuffers(0, &[plane.vbv]);
-            cmd_list.IASetIndexBuffer(&plane.ibv);
-            cmd_list.IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
-            cmd_list.DrawIndexedInstanced(plane.indices_len() as _, 1, 0, 0, 0);
-            transition_barriers(
-                cmd_list,
-                [TransitionBarrier {
-                    resource: buffer.0.handle().clone(),
-                    subresource: 0,
-                    state_before: D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE,
-                    state_after: D3D12_RESOURCE_STATE_COMMON,
-                }],
-            );
+            let mut handle = self.desc_heap.GetGPUDescriptorHandleForHeapStart();
+            handle.ptr += (index * self.desc_size) as u64;
+            ShaderResource {
+                resource: self.buffers[index].0.handle().clone(),
+                heap: self.desc_heap.clone(),
+                handle,
+            }
         }
     }
 

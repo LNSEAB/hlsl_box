@@ -551,14 +551,14 @@ impl Application {
             let ret = match &self.state {
                 State::Rendering(r) => self.renderer.render(
                     1,
-                    &self.clear_color,
+                    self.clear_color,
                     Some(&r.ps),
                     Some(&r.parameters),
                     &self.state,
                 ),
                 _ => self
                     .renderer
-                    .render(1, &self.clear_color, None, None, &self.state),
+                    .render(1, self.clear_color, None, None, &self.state),
             };
             if let Err(e) = ret {
                 error!("render: {}", e);

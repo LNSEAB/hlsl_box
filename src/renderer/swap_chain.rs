@@ -1,6 +1,6 @@
 use super::*;
 
-pub struct PresentableQueue {
+pub(super) struct PresentableQueue {
     queue: CommandQueue,
     swap_chain: IDXGISwapChain4,
 }
@@ -20,6 +20,13 @@ impl PresentableQueue {
         self.queue.execute_command_lists(cmd_lists)
     }
 
+    pub fn execute<const N: usize>(
+        &self,
+        cmd_lists: [&CommandList; N],
+    ) -> Result<Signal, Error> {
+        self.queue.execute(cmd_lists)
+    }
+
     pub fn wait(&self, signal: &Signal) -> Result<(), Error> {
         self.queue.wait(signal)
     }
@@ -32,7 +39,7 @@ impl PresentableQueue {
     }
 }
 
-pub struct SwapChain {
+pub(super) struct SwapChain {
     swap_chain: IDXGISwapChain4,
     back_buffers: Vec<ID3D12Resource>,
     rtv_heap: ID3D12DescriptorHeap,
@@ -98,65 +105,22 @@ impl SwapChain {
         }
     }
 
+    pub fn back_buffer(&self, index: usize) -> RenderTarget {
+        unsafe {
+            let desc = self.swap_chain.GetDesc1().unwrap();
+            let mut handle = self.rtv_heap.GetCPUDescriptorHandleForHeapStart();
+            handle.ptr += self.rtv_size * index;
+            RenderTarget {
+                resource: self.back_buffers[index].clone(),
+                handle,
+                size: wita::PhysicalSize::new(desc.Width, desc.Height),
+            }
+        }
+    }
+
     pub fn current_buffer(&self) -> usize {
         unsafe { self.swap_chain.GetCurrentBackBufferIndex() as usize }
     }
-
-    pub fn begin(
-        &self,
-        index: usize,
-        cmd_list: &ID3D12GraphicsCommandList,
-        clear_color: &[f32; 4],
-    ) {
-        transition_barriers(
-            cmd_list,
-            [TransitionBarrier {
-                resource: self.back_buffers[index].clone(),
-                subresource: 0,
-                state_before: D3D12_RESOURCE_STATE_PRESENT,
-                state_after: D3D12_RESOURCE_STATE_RENDER_TARGET,
-            }],
-        );
-        unsafe {
-            let mut handle = self.rtv_heap.GetCPUDescriptorHandleForHeapStart();
-            handle.ptr += self.rtv_size * index;
-            cmd_list.ClearRenderTargetView(handle, clear_color.as_ptr(), &[]);
-        }
-    }
-
-    pub fn set_target(&self, index: usize, cmd_list: &ID3D12GraphicsCommandList) {
-        unsafe {
-            let mut handle = self.rtv_heap.GetCPUDescriptorHandleForHeapStart();
-            handle.ptr += self.rtv_size * index;
-            let desc = self.swap_chain.GetDesc1().unwrap();
-            let rtvs = [handle];
-            cmd_list.RSSetViewports(&[D3D12_VIEWPORT {
-                Width: desc.Width as _,
-                Height: desc.Height as _,
-                MaxDepth: 1.0,
-                ..Default::default()
-            }]);
-            cmd_list.RSSetScissorRects(&[RECT {
-                right: desc.Width as _,
-                bottom: desc.Height as _,
-                ..Default::default()
-            }]);
-            cmd_list.OMSetRenderTargets(rtvs.len() as _, rtvs.as_ptr(), false, std::ptr::null());
-        }
-    }
-
-    pub fn end(&self, index: usize, cmd_list: &ID3D12GraphicsCommandList) {
-        transition_barriers(
-            cmd_list,
-            [TransitionBarrier {
-                resource: self.back_buffers[index].clone(),
-                subresource: 0,
-                state_before: D3D12_RESOURCE_STATE_RENDER_TARGET,
-                state_after: D3D12_RESOURCE_STATE_PRESENT,
-            }],
-        );
-    }
-
     pub fn resize(
         &mut self,
         device: &ID3D12Device,

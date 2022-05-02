@@ -7,6 +7,7 @@ pub struct Parameters {
     pub time: f32,
 }
 
+#[derive(Clone)]
 #[repr(transparent)]
 pub struct Pipeline(ID3D12PipelineState);
 
@@ -155,25 +156,34 @@ impl PixelShader {
         }
     }
 
-    pub fn execute(
-        &self,
-        cmd_list: &ID3D12GraphicsCommandList,
-        pipeline: &Pipeline,
-        parameters: &Parameters,
-        plane: &plane::Buffer,
-    ) {
+    pub fn apply<'a, 'b>(&'a self, pipeline: &'b Pipeline, parameters: &Parameters) -> State<'a>
+    where
+        'b: 'a,
+    {
         unsafe {
             let data = self.parameters.map().unwrap();
             data.copy(parameters);
         }
+        State {
+            root_signature: &self.root_signature,
+            pipeline,
+            parameters: self.parameters.gpu_virtual_address(),
+        }
+    }
+}
+
+pub struct State<'a> {
+    root_signature: &'a ID3D12RootSignature,
+    pipeline: &'a Pipeline,
+    parameters: u64,
+}
+
+impl<'a> Shader for State<'a> {
+    fn record(&self, cmd_list: &ID3D12GraphicsCommandList) {
         unsafe {
-            cmd_list.SetGraphicsRootSignature(&self.root_signature);
-            cmd_list.SetPipelineState(&pipeline.0);
-            cmd_list.SetGraphicsRootConstantBufferView(0, self.parameters.gpu_virtual_address());
-            cmd_list.IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
-            cmd_list.IASetVertexBuffers(0, &[plane.vbv]);
-            cmd_list.IASetIndexBuffer(&plane.ibv);
-            cmd_list.DrawIndexedInstanced(plane.indices_len() as _, 1, 0, 0, 0);
+            cmd_list.SetGraphicsRootSignature(self.root_signature);
+            cmd_list.SetPipelineState(&self.pipeline.0);
+            cmd_list.SetGraphicsRootConstantBufferView(0, self.parameters);
         }
     }
 }

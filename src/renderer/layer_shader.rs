@@ -1,12 +1,12 @@
 use super::*;
 
 #[derive(Clone)]
-pub struct CopyTextureShader {
+pub struct LayerShader {
     pub root_signature: ID3D12RootSignature,
     pub pipeline: ID3D12PipelineState,
 }
 
-impl CopyTextureShader {
+impl LayerShader {
     pub fn new(
         device: &ID3D12Device,
         compiler: &hlsl::Compiler,
@@ -148,6 +148,15 @@ impl CopyTextureShader {
                 root_signature,
                 pipeline,
             })
+        }
+    }
+}
+
+impl Shader for LayerShader {
+    fn record(&self, cmd_list: &ID3D12GraphicsCommandList) {
+        unsafe {
+            cmd_list.SetGraphicsRootSignature(&self.root_signature);
+            cmd_list.SetPipelineState(&self.pipeline);
         }
     }
 }

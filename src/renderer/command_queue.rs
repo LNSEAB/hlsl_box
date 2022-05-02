@@ -58,7 +58,7 @@ impl Signals {
     }
 }
 
-pub struct CommandQueue {
+pub(super) struct CommandQueue {
     queue: ID3D12CommandQueue,
     fence: ID3D12Fence,
     value: Cell<u64>,
@@ -92,7 +92,18 @@ impl CommandQueue {
         cmd_lists: &[Option<ID3D12CommandList>],
     ) -> Result<Signal, Error> {
         unsafe {
-            self.queue.ExecuteCommandLists(cmd_lists);
+            self.queue.ExecuteCommandLists(&cmd_lists);
+            self.signal()
+        }
+    }
+
+    pub fn execute<const N: usize>(
+        &self,
+        cmd_lists: [&CommandList; N],
+    ) -> Result<Signal, Error> {
+        unsafe {
+            let lists = cmd_lists.map(|l| Some(l.into()));
+            self.queue.ExecuteCommandLists(&lists);
             self.signal()
         }
     }

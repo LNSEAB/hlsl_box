@@ -51,7 +51,7 @@ impl Meshes {
 }
 
 #[derive(Clone)]
-pub struct Buffer {
+pub(super) struct Buffer {
     buffer: utility::Buffer,
     pub vbv: D3D12_VERTEX_BUFFER_VIEW,
     pub ibv: D3D12_INDEX_BUFFER_VIEW,
