@@ -1,24 +1,39 @@
 use super::*;
 
-pub(super) struct CommandList<'a> {
-    cmd_list: &'a ID3D12GraphicsCommandList,
-    layer_shader: &'a LayerShader,
+pub(super) struct CommandList {
+    cmd_list: ID3D12GraphicsCommandList,
+    layer_shader: LayerShader,
 }
 
-impl<'a> CommandList<'a> {
+impl CommandList {
     pub fn new(
-        cmd_list: &'a ID3D12GraphicsCommandList,
+        name: &str,
+        device: &ID3D12Device,
         allocator: &ID3D12CommandAllocator,
-        layer_shader: &'a LayerShader,
+        layer_shader: LayerShader,
     ) -> Result<Self, Error> {
         unsafe {
-            allocator.Reset()?;
-            cmd_list.Reset(allocator, None)?;
+            let cmd_list: ID3D12GraphicsCommandList = device.CreateCommandList(
+                0,
+                D3D12_COMMAND_LIST_TYPE_DIRECT,
+                allocator,
+                None,
+            )?; 
+            cmd_list.SetName(name)?;
+            cmd_list.Close()?;
+            Ok(Self {
+                cmd_list,
+                layer_shader,
+            })
         }
-        Ok(Self {
-            cmd_list,
-            layer_shader,
-        })
+    }
+
+    pub fn reset(&self, allocator: &ID3D12CommandAllocator) -> Result<(), Error> {
+        unsafe {
+            allocator.Reset()?;
+            self.cmd_list.Reset(allocator, None)?;
+            Ok(())
+        }
     }
 
     pub fn barrier<const N: usize>(&self, barriers: [TransitionBarrier; N]) {
@@ -61,14 +76,14 @@ impl<'a> CommandList<'a> {
     }
 }
 
-impl<'a> From<CommandList<'a>> for ID3D12CommandList {
-    fn from(src: CommandList<'a>) -> ID3D12CommandList {
+impl From<CommandList> for ID3D12CommandList {
+    fn from(src: CommandList) -> ID3D12CommandList {
         src.cmd_list.cast().unwrap()
     }
 }
 
-impl<'a> From<&CommandList<'a>> for ID3D12CommandList {
-    fn from(src: &CommandList<'a>) -> ID3D12CommandList {
+impl From<&CommandList> for ID3D12CommandList {
+    fn from(src: &CommandList) -> ID3D12CommandList {
         src.cmd_list.cast().unwrap()
     }
 }

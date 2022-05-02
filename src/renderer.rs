@@ -130,14 +130,13 @@ pub struct Renderer {
     render_target: RenderTargetBuffers,
     pixel_shader: PixelShader,
     cmd_allocators: Vec<ID3D12CommandAllocator>,
-    cmd_list: ID3D12GraphicsCommandList,
+    cmd_list: CommandList,
     signals: Signals,
     ui: Ui,
     copy_queue: CommandQueue,
     main_queue: PresentableQueue,
     filling_plane: plane::Buffer,
     adjusted_plane: plane::Buffer,
-    layer_shader: LayerShader,
 }
 
 impl Renderer {
@@ -168,14 +167,6 @@ impl Renderer {
                 d3d12_device,
                 D3D12_COMMAND_LIST_TYPE_COPY,
             )?;
-            let cmd_list: ID3D12GraphicsCommandList = d3d12_device.CreateCommandList(
-                0,
-                D3D12_COMMAND_LIST_TYPE_DIRECT,
-                &cmd_allocators[0],
-                None,
-            )?;
-            cmd_list.SetName("Renderer::cmd_lists")?;
-            cmd_list.Close()?;
             let render_target = RenderTargetBuffers::new(
                 d3d12_device,
                 resolution,
@@ -187,6 +178,7 @@ impl Renderer {
             let filling_plane = plane::Buffer::new(d3d12_device, &copy_queue)?;
             let adjusted_plane = plane::Buffer::new(d3d12_device, &copy_queue)?;
             let layer_shader = LayerShader::new(d3d12_device, compiler, shader_model)?;
+            let cmd_list = CommandList::new("Renderer::cmd_list", d3d12_device, &cmd_allocators[0], layer_shader)?;
             Ok(Self {
                 d3d12_device: d3d12_device.clone(),
                 swap_chain,
@@ -200,7 +192,6 @@ impl Renderer {
                 main_queue: presentable_queue,
                 filling_plane,
                 adjusted_plane,
-                layer_shader,
             })
         }
     }
@@ -226,10 +217,11 @@ impl Renderer {
         let current_index = index * Self::ALLOCATORS_PER_FRAME;
         let cmd_allocators =
             &self.cmd_allocators[current_index..current_index + Self::ALLOCATORS_PER_FRAME];
-        let cmd_list = CommandList::new(&self.cmd_list, &cmd_allocators[0], &self.layer_shader)?;
         let ps_result = self.render_target.source(index);
         let back_buffer = self.swap_chain.back_buffer(index);
         let ui_buffer = self.ui.source(index);
+        let cmd_list = &self.cmd_list;
+        cmd_list.reset(&cmd_allocators[0])?;
         if let Some(ps) = ps {
             if let Some(parameters) = parameters {
                 let shader = self.pixel_shader.apply(&ps, &parameters);
@@ -245,7 +237,7 @@ impl Renderer {
         cmd_list.layer(&ps_result, &back_buffer, &self.adjusted_plane);
         cmd_list.close()?;
         self.main_queue.execute([&cmd_list])?;
-        let cmd_list = CommandList::new(&self.cmd_list, &cmd_allocators[1], &self.layer_shader)?;
+        cmd_list.reset(&cmd_allocators[1])?;
         cmd_list.barrier([ui_buffer.enter()]);
         cmd_list.layer(&ui_buffer, &back_buffer, &self.adjusted_plane);
         cmd_list.barrier([ps_result.leave(), back_buffer.leave(), ui_buffer.leave()]);
