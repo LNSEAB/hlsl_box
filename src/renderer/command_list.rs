@@ -13,12 +13,8 @@ impl CommandList {
         layer_shader: LayerShader,
     ) -> Result<Self, Error> {
         unsafe {
-            let cmd_list: ID3D12GraphicsCommandList = device.CreateCommandList(
-                0,
-                D3D12_COMMAND_LIST_TYPE_DIRECT,
-                allocator,
-                None,
-            )?; 
+            let cmd_list: ID3D12GraphicsCommandList =
+                device.CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, allocator, None)?;
             cmd_list.SetName(name)?;
             cmd_list.Close()?;
             Ok(Self {

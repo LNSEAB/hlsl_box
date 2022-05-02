@@ -97,10 +97,7 @@ impl CommandQueue {
         }
     }
 
-    pub fn execute<const N: usize>(
-        &self,
-        cmd_lists: [&CommandList; N],
-    ) -> Result<Signal, Error> {
+    pub fn execute<const N: usize>(&self, cmd_lists: [&CommandList; N]) -> Result<Signal, Error> {
         unsafe {
             let lists = cmd_lists.map(|l| Some(l.into()));
             self.queue.ExecuteCommandLists(&lists);

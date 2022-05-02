@@ -178,7 +178,12 @@ impl Renderer {
             let filling_plane = plane::Buffer::new(d3d12_device, &copy_queue)?;
             let adjusted_plane = plane::Buffer::new(d3d12_device, &copy_queue)?;
             let layer_shader = LayerShader::new(d3d12_device, compiler, shader_model)?;
-            let cmd_list = CommandList::new("Renderer::cmd_list", d3d12_device, &cmd_allocators[0], layer_shader)?;
+            let cmd_list = CommandList::new(
+                "Renderer::cmd_list",
+                d3d12_device,
+                &cmd_allocators[0],
+                layer_shader,
+            )?;
             Ok(Self {
                 d3d12_device: d3d12_device.clone(),
                 swap_chain,

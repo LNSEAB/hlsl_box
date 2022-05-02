@@ -20,10 +20,7 @@ impl PresentableQueue {
         self.queue.execute_command_lists(cmd_lists)
     }
 
-    pub fn execute<const N: usize>(
-        &self,
-        cmd_lists: [&CommandList; N],
-    ) -> Result<Signal, Error> {
+    pub fn execute<const N: usize>(&self, cmd_lists: [&CommandList; N]) -> Result<Signal, Error> {
         self.queue.execute(cmd_lists)
     }
 
