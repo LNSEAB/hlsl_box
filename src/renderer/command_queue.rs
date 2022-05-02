@@ -47,12 +47,11 @@ impl Signals {
     }
 
     pub fn wait_all(&self) {
-        let event = Event::new().unwrap();
         let mut signals = self.signals.borrow_mut();
-        for signal in signals.iter_mut().map(|s| s.take()).flatten() {
+        for signal in signals.iter_mut().flat_map(|s| s.take()) {
             if !signal.is_completed() {
-                signal.set_event(&event).unwrap();
-                event.wait();
+                signal.set_event(&self.event).unwrap();
+                self.event.wait();
             }
         }
     }
@@ -92,7 +91,7 @@ impl CommandQueue {
         cmd_lists: &[Option<ID3D12CommandList>],
     ) -> Result<Signal, Error> {
         unsafe {
-            self.queue.ExecuteCommandLists(&cmd_lists);
+            self.queue.ExecuteCommandLists(cmd_lists);
             self.signal()
         }
     }
