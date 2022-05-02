@@ -13,13 +13,6 @@ impl PresentableQueue {
         }
     }
 
-    pub fn execute_command_lists(
-        &self,
-        cmd_lists: &[Option<ID3D12CommandList>],
-    ) -> Result<Signal, Error> {
-        self.queue.execute_command_lists(cmd_lists)
-    }
-
     pub fn execute<const N: usize>(&self, cmd_lists: [&CommandList; N]) -> Result<Signal, Error> {
         self.queue.execute(cmd_lists)
     }

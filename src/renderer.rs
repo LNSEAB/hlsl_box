@@ -241,7 +241,7 @@ impl Renderer {
         cmd_list.clear(&back_buffer, clear_color);
         cmd_list.layer(&ps_result, &back_buffer, &self.adjusted_plane);
         cmd_list.close()?;
-        self.main_queue.execute([&cmd_list])?;
+        self.main_queue.execute([cmd_list])?;
         cmd_list.reset(&cmd_allocators[1])?;
         cmd_list.barrier([ui_buffer.enter()]);
         cmd_list.layer(&ui_buffer, &back_buffer, &self.adjusted_plane);
@@ -249,8 +249,7 @@ impl Renderer {
         cmd_list.close()?;
         let ui_signal = self.ui.render(index, r)?;
         self.main_queue.wait(&ui_signal)?;
-        self.main_queue
-            .execute_command_lists(&[Some(cmd_list.into())])?;
+        self.main_queue.execute([cmd_list])?;
         let signal = self.main_queue.present(interval)?;
         self.signals.set(index, signal);
         Ok(())
