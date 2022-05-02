@@ -69,7 +69,12 @@ fn main() {
         use windows::Win32::UI::WindowsAndMessaging::*;
 
         let args = std::env::args().collect::<Vec<_>>();
-        match info.payload().downcast_ref::<String>() {
+        let msg = info
+            .payload()
+            .downcast_ref::<String>()
+            .map(|s| s.as_str())
+            .or_else(|| info.payload().downcast_ref::<&str>().map(|s| *s));
+        match msg {
             Some(msg) => {
                 let s = match info.location() {
                     Some(loc) => format!("{} ({}:{})", msg, loc.file(), loc.line()),
