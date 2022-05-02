@@ -202,11 +202,16 @@ impl Renderer {
     }
 
     pub fn mltg_factory(&self) -> mltg::Factory {
-        self.ui.context.create_factory()
+        self.ui.create_factory()
     }
 
-    pub fn create_pixel_shader_pipeline(&self, ps: &hlsl::Blob) -> Result<Pipeline, Error> {
-        self.pixel_shader.create_pipeline(&self.d3d12_device, ps)
+    pub fn create_pixel_shader_pipeline(
+        &self,
+        name: &str,
+        ps: &hlsl::Blob,
+    ) -> Result<Pipeline, Error> {
+        self.pixel_shader
+            .create_pipeline(name, &self.d3d12_device, ps)
     }
 
     pub fn render(

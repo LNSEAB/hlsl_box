@@ -5,7 +5,7 @@ pub trait RenderUi {
 }
 
 pub struct Ui {
-    pub context: mltg::Context<mltg::Direct3D12>,
+    context: mltg::Context<mltg::Direct3D12>,
     cmd_queue: CommandQueue,
     desc_heap: ID3D12DescriptorHeap,
     desc_size: usize,
@@ -95,6 +95,10 @@ impl Ui {
             &mut self.buffers,
         )?;
         Ok(())
+    }
+
+    pub fn create_factory(&self) -> mltg::Factory {
+        self.context.create_factory()
     }
 
     pub fn change_dpi(&self, dpi: u32) -> Result<(), Error> {

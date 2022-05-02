@@ -86,6 +86,7 @@ impl PixelShader {
 
     pub fn create_pipeline(
         &self,
+        name: &str,
         device: &ID3D12Device,
         ps: &hlsl::Blob,
     ) -> Result<Pipeline, Error> {
@@ -149,10 +150,9 @@ impl PixelShader {
                 SampleDesc: SampleDesc::default().into(),
                 ..Default::default()
             };
-            device
-                .CreateGraphicsPipelineState(&desc)
-                .map(Pipeline)
-                .map_err(|e| e.into())
+            let pipeline: ID3D12PipelineState = device.CreateGraphicsPipelineState(&desc)?;
+            pipeline.SetName(name)?;
+            Ok(Pipeline(pipeline))
         }
     }
 

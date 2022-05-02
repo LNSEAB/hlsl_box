@@ -393,7 +393,9 @@ impl Application {
             hlsl::Target::PS(self.shader_model),
             &self.settings.shader.ps_args,
         )?;
-        let ps = self.renderer.create_pixel_shader_pipeline(&blob)?;
+        let ps = self
+            .renderer
+            .create_pixel_shader_pipeline(&format!("{}", path.display()), &blob)?;
         let resolution = self.settings.resolution.clone();
         let parameters = pixel_shader::Parameters {
             resolution: [resolution.width as _, resolution.height as _],
