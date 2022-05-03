@@ -299,7 +299,6 @@ impl RenderUi for State {
 
 pub struct Application {
     settings: Settings,
-    _d3d12_device: ID3D12Device,
     shader_model: hlsl::ShaderModel,
     compiler: hlsl::Compiler,
     window_receiver: WindowReceiver,
@@ -307,7 +306,7 @@ pub struct Application {
     clear_color: [f32; 4],
     mouse: [f32; 2],
     start_time: std::time::Instant,
-    dir: Option<DirMonitor>,
+    dir_monitor: Option<DirMonitor>,
     state: State,
     ui_props: UiProperties,
     show_frame_counter: Rc<Cell<bool>>,
@@ -363,7 +362,6 @@ impl Application {
         };
         let show_frame_counter = Rc::new(Cell::new(settings.frame_counter));
         let mut this = Self {
-            _d3d12_device: d3d12_device,
             settings,
             window_receiver,
             shader_model,
@@ -372,7 +370,7 @@ impl Application {
             clear_color,
             mouse: [0.0, 0.0],
             start_time: std::time::Instant::now(),
-            dir: None,
+            dir_monitor: None,
             state: State::Init,
             ui_props,
             show_frame_counter,
@@ -388,9 +386,9 @@ impl Application {
     fn load_file(&mut self, path: &Path) -> Result<(), Error> {
         assert!(path.is_file());
         let parent = path.parent().unwrap();
-        if self.dir.as_ref().map_or(true, |d| d.path() != parent) {
+        if self.dir_monitor.as_ref().map_or(true, |d| d.path() != parent) {
             debug!("load_file: DirMonitor::new: {}", parent.display());
-            self.dir = Some(DirMonitor::new(parent)?);
+            self.dir_monitor = Some(DirMonitor::new(parent)?);
         }
         let blob = self.compiler.compile_from_file(
             path,
@@ -524,7 +522,7 @@ impl Application {
                 }
                 _ => {}
             }
-            if let Some(path) = self.dir.as_ref().and_then(|dir| dir.try_recv()) {
+            if let Some(path) = self.dir_monitor.as_ref().and_then(|dir| dir.try_recv()) {
                 match &self.state {
                     State::Rendering(r) => {
                         if r.path == path {
