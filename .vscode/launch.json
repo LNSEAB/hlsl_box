@@ -14,6 +14,18 @@
             "console": "integratedTerminal"
         },
         {
+            "name": "run debug with file",
+            "type": "cppvsdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/target/debug/${workspaceFolderBasename}.exe",
+            "args": ["--debuglayer", "--nomodal", "${workspaceFolder}/examples/sphere.hlsl"],
+            "stopAtEntry": false,
+            "cwd": "${workspaceFolder}",
+            "environment": [],
+            "preLaunchTask": "build debug",
+            "console": "integratedTerminal"
+        },
+        {
             "name": "run release",
             "type": "cppvsdbg",
             "request": "launch",

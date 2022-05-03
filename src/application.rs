@@ -315,9 +315,8 @@ pub struct Application {
 
 impl Application {
     pub fn new(settings: Settings, window_receiver: WindowReceiver) -> Result<Self, Error> {
-        let args = std::env::args().collect::<Vec<_>>();
         let compiler = hlsl::Compiler::new()?;
-        let debug_layer = args.iter().any(|arg| arg == "--debuglayer");
+        let debug_layer = ENV_ARGS.debuglayer;
         if debug_layer {
             unsafe {
                 let mut debug: Option<ID3D12Debug> = None;
@@ -363,7 +362,7 @@ impl Application {
             bg_color,
         };
         let show_frame_counter = Rc::new(Cell::new(settings.frame_counter));
-        Ok(Self {
+        let mut this = Self {
             _d3d12_device: d3d12_device,
             settings,
             window_receiver,
@@ -377,7 +376,13 @@ impl Application {
             state: State::Init,
             ui_props,
             show_frame_counter,
-        })
+        };
+        if let Some(path) = ENV_ARGS.input_file.as_ref().map(Path::new) {
+            if let Err(e) = this.load_file(path) {
+                this.set_error(&path, e)?;
+            }
+        }
+        Ok(this)
     }
 
     fn load_file(&mut self, path: &Path) -> Result<(), Error> {
