@@ -379,7 +379,7 @@ impl Application {
         };
         if let Some(path) = ENV_ARGS.input_file.as_ref().map(Path::new) {
             if let Err(e) = this.load_file(path) {
-                this.set_error(&path, e)?;
+                this.set_error(path, e)?;
             }
         }
         Ok(this)
