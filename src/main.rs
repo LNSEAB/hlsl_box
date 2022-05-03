@@ -24,7 +24,6 @@ use settings::Settings;
 use utility::*;
 use window::*;
 
-const SETTINGS_PATH: &str = "./settings.toml";
 const TITLE: &str = "HLSL Box";
 
 static LOCALE: Lazy<Option<String>> = Lazy::new(|| unsafe {
@@ -47,6 +46,14 @@ static ENV_ARGS: Lazy<EnvArgs> = Lazy::new(|| {
     EnvArgs::parse()
 });
 
+static EXE_DIR_PATH: Lazy<std::path::PathBuf> = Lazy::new(|| {
+    std::env::current_exe().unwrap().parent().unwrap().to_path_buf()
+});
+
+static SETTINGS_PATH: Lazy<std::path::PathBuf> = Lazy::new(|| {
+    EXE_DIR_PATH.join("settings.toml")
+});
+
 fn logger() {
     use std::fs::File;
     use tracing_subscriber::{filter::LevelFilter, prelude::*};
@@ -58,7 +65,7 @@ fn logger() {
     };
     let file = tracing_subscriber::fmt::layer()
         .compact()
-        .with_writer(Arc::new(File::create("hlsl_box.log").unwrap()))
+        .with_writer(Arc::new(File::create(EXE_DIR_PATH.join("hlsl_box.log")).unwrap()))
         .with_ansi(false)
         .with_line_number(true)
         .with_filter(filter);
@@ -117,7 +124,7 @@ fn main() {
     let th_handle = Rc::new(RefCell::new(None));
     let th_handle_f = th_handle.clone();
     let f = move || -> Result<WindowManager, Error> {
-        let settings = Settings::load(SETTINGS_PATH)?;
+        let settings = Settings::load(&*SETTINGS_PATH)?;
         let mut key_map = KeyboardMap::new();
         key_map.insert(
             vec![wita::VirtualKey::Ctrl, wita::VirtualKey::Char('O')],

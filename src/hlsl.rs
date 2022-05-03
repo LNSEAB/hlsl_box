@@ -35,10 +35,7 @@ fn create_args(
     opts: &[String],
 ) -> (Vec<PWSTR>, Vec<Vec<u16>>) {
     static INCLUDE: Lazy<String> = Lazy::new(|| {
-        std::env::current_exe()
-            .unwrap()
-            .parent()
-            .unwrap()
+        EXE_DIR_PATH
             .join("include")
             .to_string_lossy()
             .to_string()
