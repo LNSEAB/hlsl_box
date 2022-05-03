@@ -429,7 +429,7 @@ impl Application {
             if let Ok(WindowEvent::Closed(window)) = sync_event {
                 debug!("WindowEvent::Closed");
                 self.settings.window = window;
-                match self.settings.save(SETTINGS_PATH) {
+                match self.settings.save(&*SETTINGS_PATH) {
                     Ok(_) => info!("saved settings"),
                     Err(e) => error!("save settings: {}", e),
                 }
