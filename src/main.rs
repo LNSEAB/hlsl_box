@@ -33,6 +33,20 @@ static LOCALE: Lazy<Option<String>> = Lazy::new(|| unsafe {
     (size != 0).then(|| String::from_utf16_lossy(&buffer[0..size - 1]))
 });
 
+#[derive(Debug, clap::Parser)]
+struct EnvArgs {
+    #[clap(long)]
+    debuglayer: bool,
+    #[clap(long)]
+    nomodal: bool,
+    input_file: Option<String>,
+}
+
+static ENV_ARGS: Lazy<EnvArgs> = Lazy::new(|| {
+    use clap::Parser;
+    EnvArgs::parse()
+});
+
 fn logger() {
     use std::fs::File;
     use tracing_subscriber::{filter::LevelFilter, prelude::*};
@@ -67,8 +81,6 @@ fn main() {
     std::panic::set_hook(Box::new(|info| unsafe {
         use windows::Win32::Foundation::HWND;
         use windows::Win32::UI::WindowsAndMessaging::*;
-
-        let args = std::env::args().collect::<Vec<_>>();
         let msg = info
             .payload()
             .downcast_ref::<String>()
@@ -80,7 +92,7 @@ fn main() {
                     Some(loc) => format!("{} ({}:{})", msg, loc.file(), loc.line()),
                     None => msg.to_string(),
                 };
-                if !args.iter().any(|arg| arg == "--nomodal") {
+                if !ENV_ARGS.nomodal {
                     MessageBoxW(
                         HWND(0),
                         s.as_str(),
@@ -100,6 +112,7 @@ fn main() {
         };
     }));
     info!("start");
+    debug!("ENV_ARGS: {:?}", &*ENV_ARGS);
     let _coinit = coinit::init(coinit::APARTMENTTHREADED | coinit::DISABLE_OLE1DDE).unwrap();
     let th_handle = Rc::new(RefCell::new(None));
     let th_handle_f = th_handle.clone();
