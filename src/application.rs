@@ -24,7 +24,7 @@ struct UiProperties {
 struct FrameCounter {
     count: Cell<u64>,
     text_layout: RefCell<mltg::TextLayout>,
-    t: Cell<std::time::Instant>,
+    frame_start_time: Cell<std::time::Instant>,
     ui_props: UiProperties,
 }
 
@@ -39,18 +39,18 @@ impl FrameCounter {
         Ok(Self {
             count: Cell::new(0),
             text_layout: RefCell::new(text_layout),
-            t: Cell::new(std::time::Instant::now()),
+            frame_start_time: Cell::new(std::time::Instant::now()),
             ui_props: ui_props.clone(),
         })
     }
 
     fn reset(&self) {
         self.count.set(0);
-        self.t.set(std::time::Instant::now());
+        self.frame_start_time.set(std::time::Instant::now());
     }
 
     fn update(&self) -> Result<(), Error> {
-        if (std::time::Instant::now() - self.t.get()).as_millis() >= 1000 {
+        if (std::time::Instant::now() - self.frame_start_time.get()).as_millis() >= 1000 {
             let text_layout = self.ui_props.factory.create_text_layout(
                 &self.count.get().to_string(),
                 &self.ui_props.text_format,
