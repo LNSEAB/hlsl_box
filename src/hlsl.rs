@@ -34,8 +34,26 @@ fn create_args(
     path: Option<&str>,
     opts: &[String],
 ) -> (Vec<PWSTR>, Vec<Vec<u16>>) {
+    static INCLUDE: Lazy<String> = Lazy::new(|| {
+        std::env::current_exe()
+            .unwrap()
+            .parent()
+            .unwrap()
+            .join("include")
+            .to_string_lossy()
+            .to_string()
+    });
     let target = target.to_string();
-    let mut args = vec!["-E", entry_point, "-T", &target, "-I", "./include"];
+    let mut args = vec![
+        "-E",
+        entry_point,
+        "-T",
+        &target,
+        "-I",
+        &INCLUDE,
+        "-I",
+        "./include",
+    ];
     for opt in opts.iter() {
         args.push(opt.as_ref());
     }
