@@ -6,6 +6,7 @@ mod plane;
 mod render_target;
 mod swap_chain;
 mod ui;
+mod utility;
 
 use crate::*;
 use std::cell::{Cell, RefCell};
@@ -24,6 +25,7 @@ use render_target::*;
 use swap_chain::*;
 pub use ui::RenderUi;
 use ui::*;
+use utility::*;
 
 trait Target {
     fn enter(&self) -> TransitionBarrier;

@@ -6,7 +6,6 @@ mod hlsl;
 mod monitor;
 mod renderer;
 mod settings;
-mod utility;
 mod window;
 
 use once_cell::sync::Lazy;
@@ -21,7 +20,6 @@ use error::Error;
 use monitor::*;
 use renderer::*;
 use settings::Settings;
-use utility::*;
 use window::*;
 
 const TITLE: &str = "HLSL Box";
