@@ -47,12 +47,14 @@ static ENV_ARGS: Lazy<EnvArgs> = Lazy::new(|| {
 });
 
 static EXE_DIR_PATH: Lazy<std::path::PathBuf> = Lazy::new(|| {
-    std::env::current_exe().unwrap().parent().unwrap().to_path_buf()
+    std::env::current_exe()
+        .unwrap()
+        .parent()
+        .unwrap()
+        .to_path_buf()
 });
 
-static SETTINGS_PATH: Lazy<std::path::PathBuf> = Lazy::new(|| {
-    EXE_DIR_PATH.join("settings.toml")
-});
+static SETTINGS_PATH: Lazy<std::path::PathBuf> = Lazy::new(|| EXE_DIR_PATH.join("settings.toml"));
 
 fn set_logger() {
     use std::fs::File;
@@ -65,7 +67,9 @@ fn set_logger() {
     };
     let file = tracing_subscriber::fmt::layer()
         .compact()
-        .with_writer(Arc::new(File::create(EXE_DIR_PATH.join("hlsl_box.log")).unwrap()))
+        .with_writer(Arc::new(
+            File::create(EXE_DIR_PATH.join("hlsl_box.log")).unwrap(),
+        ))
         .with_ansi(false)
         .with_line_number(true)
         .with_filter(filter);

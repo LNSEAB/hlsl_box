@@ -34,12 +34,8 @@ fn create_args(
     path: Option<&str>,
     opts: &[String],
 ) -> (Vec<PWSTR>, Vec<Vec<u16>>) {
-    static INCLUDE: Lazy<String> = Lazy::new(|| {
-        EXE_DIR_PATH
-            .join("include")
-            .to_string_lossy()
-            .to_string()
-    });
+    static INCLUDE: Lazy<String> =
+        Lazy::new(|| EXE_DIR_PATH.join("include").to_string_lossy().to_string());
     let target = target.to_string();
     let mut args = vec![
         "-E",
