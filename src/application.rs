@@ -1,3 +1,6 @@
+mod error_message;
+mod frame_counter;
+
 use crate::*;
 use std::{
     cell::Cell,
@@ -6,6 +9,9 @@ use std::{
     rc::Rc,
 };
 use windows::Win32::Graphics::{Direct3D::*, Direct3D12::*};
+
+use error_message::*;
+use frame_counter::*;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Method {
@@ -21,257 +27,12 @@ struct UiProperties {
     bg_color: mltg::Brush,
 }
 
-struct FrameCounter {
-    count: Cell<u64>,
-    text_layout: RefCell<mltg::TextLayout>,
-    t: Cell<std::time::Instant>,
-    ui_props: UiProperties,
-}
-
-impl FrameCounter {
-    fn new(ui_props: &UiProperties) -> Result<Self, Error> {
-        let text_layout = ui_props.factory.create_text_layout(
-            "0",
-            &ui_props.text_format,
-            mltg::TextAlignment::Center,
-            None,
-        )?;
-        Ok(Self {
-            count: Cell::new(0),
-            text_layout: RefCell::new(text_layout),
-            t: Cell::new(std::time::Instant::now()),
-            ui_props: ui_props.clone(),
-        })
-    }
-
-    fn reset(&self) {
-        self.count.set(0);
-        self.t.set(std::time::Instant::now());
-    }
-
-    fn update(&self) -> Result<(), Error> {
-        if (std::time::Instant::now() - self.t.get()).as_millis() >= 1000 {
-            let text_layout = self.ui_props.factory.create_text_layout(
-                &self.count.get().to_string(),
-                &self.ui_props.text_format,
-                mltg::TextAlignment::Center,
-                None,
-            )?;
-            *self.text_layout.borrow_mut() = text_layout;
-            self.reset();
-        } else {
-            self.count.set(self.count.get() + 1);
-        }
-        Ok(())
-    }
-
-    fn draw(&self, cmd: &mltg::DrawCommand, pos: impl Into<mltg::Point>) {
-        let margin = mltg::Size::new(5.0, 3.0);
-        let text_layout = self.text_layout.borrow();
-        let pos = pos.into();
-        let size = text_layout.size();
-        cmd.fill(
-            &mltg::Rect::new(
-                pos,
-                [
-                    size.width + margin.width * 2.0,
-                    size.height + margin.height * 2.0,
-                ],
-            ),
-            &self.ui_props.bg_color,
-        );
-        cmd.draw_text_layout(
-            &text_layout,
-            &self.ui_props.text_color,
-            [pos.x + margin.width, pos.y + margin.height],
-        );
-    }
-}
-
 struct Rendering {
     path: PathBuf,
     parameters: pixel_shader::Parameters,
     ps: pixel_shader::Pipeline,
     frame_counter: FrameCounter,
     show_frame_counter: Rc<Cell<bool>>,
-}
-
-struct ErrorMessage {
-    path: PathBuf,
-    window: wita::Window,
-    ui_props: UiProperties,
-    text: Vec<String>,
-    layouts: VecDeque<Vec<mltg::TextLayout>>,
-    current_line: u32,
-}
-
-impl ErrorMessage {
-    fn new(
-        path: PathBuf,
-        window: wita::Window,
-        e: &Error,
-        ui_props: &UiProperties,
-        size: mltg::Size,
-    ) -> Result<Self, Error> {
-        let text = format!("{}", e);
-        let text = text.split('\n').map(|t| t.to_string()).collect::<Vec<_>>();
-        let layouts = VecDeque::new();
-        let mut this = Self {
-            path,
-            window,
-            ui_props: ui_props.clone(),
-            text,
-            layouts,
-            current_line: 0,
-        };
-        let mut index = 0;
-        let mut height = 0.0;
-        while index < this.text.len() && height < size.height {
-            let mut buffer = Vec::new();
-            this.create_text_layouts(&mut buffer, &this.text[index], size)?;
-            height += buffer.iter().fold(0.0, |h, l| h + l.size().height);
-            this.layouts.push_back(buffer);
-            index += 1;
-        }
-        Ok(this)
-    }
-
-    fn offset(&mut self, size: mltg::Size, d: i32) -> Result<(), Error> {
-        let mut line = self.current_line;
-        if d < 0 {
-            let d = d.abs() as u32;
-            if line <= d {
-                line = 0;
-            } else {
-                line -= d;
-            }
-        } else {
-            line = (line + d as u32).min(self.text.len() as u32 - 1);
-        }
-        if self.current_line == line {
-            return Ok(());
-        }
-        if self.current_line > line {
-            let mut index = self.current_line as isize - 1;
-            while index >= line as _ {
-                let mut buffer = Vec::new();
-                self.create_text_layouts(&mut buffer, &self.text[index as usize], size)?;
-                self.layouts.push_front(buffer);
-                index -= 1;
-            }
-            let mut height = self
-                .layouts
-                .iter()
-                .flatten()
-                .fold(0.0, |h, l| h + l.size().height);
-            while height
-                - self
-                    .layouts
-                    .back()
-                    .unwrap()
-                    .iter()
-                    .fold(0.0, |h, l| h + l.size().height)
-                > size.height
-            {
-                let back = self.layouts.pop_back().unwrap();
-                height -= back.iter().fold(0.0, |h, l| h + l.size().height);
-            }
-        } else {
-            let mut height = self
-                .layouts
-                .iter()
-                .flatten()
-                .fold(0.0, |h, l| h + l.size().height);
-            let d = line - self.current_line;
-            self.layouts.drain(..d as usize);
-            let mut index = line as usize + self.layouts.len();
-            while index < self.text.len() && height < size.height {
-                let mut buffer = Vec::new();
-                self.create_text_layouts(&mut buffer, &self.text[index], size)?;
-                height += buffer.iter().fold(0.0, |h, l| h + l.size().height);
-                self.layouts.push_back(buffer);
-                index += 1;
-            }
-        }
-        self.current_line = line;
-        Ok(())
-    }
-
-    fn draw(&self, cmd: &mltg::DrawCommand) {
-        let size = self
-            .window
-            .inner_size()
-            .to_logical(self.window.dpi())
-            .cast::<f32>();
-        cmd.fill(
-            &mltg::Rect::new([0.0, 0.0], [size.width, size.height]),
-            &self.ui_props.bg_color,
-        );
-        let mut y = 0.0;
-        for line in &self.layouts {
-            for layout in line {
-                cmd.draw_text_layout(layout, &self.ui_props.text_color, [0.0, y]);
-                y += layout.size().height;
-            }
-        }
-    }
-
-    fn update(&mut self, size: mltg::Size) -> Result<(), Error> {
-        let mut height = 0.0;
-        let mut index = self.current_line as usize;
-        self.layouts.clear();
-        while index < self.text.len() && height < size.height {
-            let mut buffer = Vec::new();
-            self.create_text_layouts(&mut buffer, &self.text[index], size)?;
-            height += buffer.iter().fold(0.0, |h, l| h + l.size().height);
-            self.layouts.push_back(buffer);
-            index += 1;
-        }
-        Ok(())
-    }
-
-    fn create_text_layouts(
-        &self,
-        v: &mut Vec<mltg::TextLayout>,
-        text: &str,
-        size: mltg::Size,
-    ) -> Result<(), Error> {
-        let layout = self.ui_props.factory.create_text_layout(
-            text,
-            &self.ui_props.text_format,
-            mltg::TextAlignment::Leading,
-            None,
-        )?;
-        let test = layout.hit_test(mltg::point(size.width, 0.0));
-        if !test.inside {
-            v.push(layout);
-            return Ok(());
-        }
-        let mut pos = test.text_position - 1;
-        let cs = text.chars().collect::<Vec<char>>();
-        let mut c = cs[pos];
-        if c.is_ascii() {
-            loop {
-                if pos == 0 {
-                    pos = test.text_position - 1;
-                    break;
-                }
-                if !c.is_ascii() || c == ' ' {
-                    break;
-                }
-                pos -= 1;
-                c = cs[pos];
-            }
-        }
-        let layout = self.ui_props.factory.create_text_layout(
-            &cs.iter().take(pos + 1).collect::<String>(),
-            &self.ui_props.text_format,
-            mltg::TextAlignment::Leading,
-            None,
-        )?;
-        v.push(layout);
-        self.create_text_layouts(v, &cs.iter().skip(pos + 1).collect::<String>(), size)
-    }
 }
 
 enum State {
@@ -299,7 +60,6 @@ impl RenderUi for State {
 
 pub struct Application {
     settings: Settings,
-    _d3d12_device: ID3D12Device,
     shader_model: hlsl::ShaderModel,
     compiler: hlsl::Compiler,
     window_receiver: WindowReceiver,
@@ -307,7 +67,7 @@ pub struct Application {
     clear_color: [f32; 4],
     mouse: [f32; 2],
     start_time: std::time::Instant,
-    dir: Option<DirMonitor>,
+    dir_monitor: Option<DirMonitor>,
     state: State,
     ui_props: UiProperties,
     show_frame_counter: Rc<Cell<bool>>,
@@ -363,7 +123,6 @@ impl Application {
         };
         let show_frame_counter = Rc::new(Cell::new(settings.frame_counter));
         let mut this = Self {
-            _d3d12_device: d3d12_device,
             settings,
             window_receiver,
             shader_model,
@@ -372,7 +131,7 @@ impl Application {
             clear_color,
             mouse: [0.0, 0.0],
             start_time: std::time::Instant::now(),
-            dir: None,
+            dir_monitor: None,
             state: State::Init,
             ui_props,
             show_frame_counter,
@@ -388,9 +147,13 @@ impl Application {
     fn load_file(&mut self, path: &Path) -> Result<(), Error> {
         assert!(path.is_file());
         let parent = path.parent().unwrap();
-        if self.dir.as_ref().map_or(true, |d| d.path() != parent) {
+        let same_dir_monitor = self
+            .dir_monitor
+            .as_ref()
+            .map_or(true, |d| d.path() != parent);
+        if same_dir_monitor {
             debug!("load_file: DirMonitor::new: {}", parent.display());
-            self.dir = Some(DirMonitor::new(parent)?);
+            self.dir_monitor = Some(DirMonitor::new(parent)?);
         }
         let blob = self.compiler.compile_from_file(
             path,
@@ -418,31 +181,21 @@ impl Application {
         self.start_time = std::time::Instant::now();
         self.window_receiver
             .main_window
-            .set_title(format!("HLSLBox {}", path.display()));
+            .set_title(format!("{} {}", TITLE, path.display()));
         info!("load file: {}", path.display());
         Ok(())
     }
 
     pub fn run(&mut self) -> Result<(), Error> {
         loop {
-            let sync_event = self.window_receiver.sync_event.try_recv();
-            if let Ok(WindowEvent::Closed(window)) = sync_event {
-                debug!("WindowEvent::Closed");
-                self.settings.window = window;
-                match self.settings.save(&*SETTINGS_PATH) {
-                    Ok(_) => info!("saved settings"),
-                    Err(e) => error!("save settings: {}", e),
-                }
-                break;
-            }
-            match self.window_receiver.event.try_recv() {
-                Ok(WindowEvent::LoadFile(path)) => {
+            match self.window_receiver.try_recv() {
+                Some(WindowEvent::LoadFile(path)) => {
                     debug!("WindowEvent::LoadFile");
                     if let Err(e) = self.load_file(&path) {
                         self.set_error(&path, e)?;
                     }
                 }
-                Ok(WindowEvent::KeyInput(m)) => {
+                Some(WindowEvent::KeyInput(m)) => {
                     debug!("WindowEvent::KeyInput");
                     match m {
                         Method::OpenDialog => {
@@ -464,7 +217,7 @@ impl Application {
                         }
                     }
                 }
-                Ok(WindowEvent::Wheel(d)) => {
+                Some(WindowEvent::Wheel(d)) => {
                     debug!("WindowEvent::Wheel");
                     if let State::Error(em) = &mut self.state {
                         let main_window = &self.window_receiver.main_window;
@@ -473,7 +226,7 @@ impl Application {
                         em.offset([size.width, size.height].into(), d)?;
                     }
                 }
-                Ok(WindowEvent::Resized(size)) => {
+                Some(WindowEvent::Resized(size)) => {
                     debug!("WindowEvent::Resized");
                     if let Err(e) = self.renderer.resize(size) {
                         error!("{}", e);
@@ -485,7 +238,7 @@ impl Application {
                         e.update([size.width, size.height].into())?;
                     }
                 }
-                Ok(WindowEvent::Restored(size)) => {
+                Some(WindowEvent::Restored(size)) => {
                     debug!("WindowEvent::Restored");
                     if let Err(e) = self.renderer.restore(size) {
                         error!("{}", e);
@@ -497,10 +250,10 @@ impl Application {
                         e.update([size.width, size.height].into())?;
                     }
                 }
-                Ok(WindowEvent::Minimized) => {
+                Some(WindowEvent::Minimized) => {
                     debug!("WindowEvent::Minimized");
                 }
-                Ok(WindowEvent::Maximized(size)) => {
+                Some(WindowEvent::Maximized(size)) => {
                     debug!("WindowEvent::Maximized");
                     if let Err(e) = self.renderer.maximize(size) {
                         error!("{}", e);
@@ -512,7 +265,7 @@ impl Application {
                         e.update([size.width, size.height].into())?;
                     }
                 }
-                Ok(WindowEvent::DpiChanged(dpi)) => {
+                Some(WindowEvent::DpiChanged(dpi)) => {
                     debug!("WindowEvent::DpiChanged");
                     if let Err(e) = self.renderer.change_dpi(dpi) {
                         error!("{}", e);
@@ -522,9 +275,18 @@ impl Application {
                         error!("{}", e);
                     }
                 }
+                Some(WindowEvent::Closed(window)) => {
+                    debug!("WindowEvent::Closed");
+                    self.settings.window = window;
+                    match self.settings.save(&*SETTINGS_PATH) {
+                        Ok(_) => info!("saved settings"),
+                        Err(e) => error!("save settings: {}", e),
+                    }
+                    break;
+                }
                 _ => {}
             }
-            if let Some(path) = self.dir.as_ref().and_then(|dir| dir.try_recv()) {
+            if let Some(path) = self.dir_monitor.as_ref().and_then(|dir| dir.try_recv()) {
                 match &self.state {
                     State::Rendering(r) => {
                         if r.path == path {
@@ -534,7 +296,7 @@ impl Application {
                         }
                     }
                     State::Error(e) => {
-                        if e.path == path {
+                        if e.path() == path {
                             if let Err(e) = self.load_file(&path) {
                                 self.set_error(&path, e)?;
                             }
@@ -546,7 +308,7 @@ impl Application {
             if let State::Rendering(r) = &mut self.state {
                 r.parameters.mouse = {
                     let size = self.window_receiver.main_window.inner_size().cast::<f32>();
-                    let cursor_position = self.window_receiver.cursor_position.lock().unwrap();
+                    let cursor_position = self.window_receiver.get_cursor_position();
                     [
                         cursor_position.x as f32 / size.width,
                         cursor_position.y as f32 / size.height,

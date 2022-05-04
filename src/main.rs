@@ -6,7 +6,6 @@ mod hlsl;
 mod monitor;
 mod renderer;
 mod settings;
-mod utility;
 mod window;
 
 use once_cell::sync::Lazy;
@@ -21,7 +20,6 @@ use error::Error;
 use monitor::*;
 use renderer::*;
 use settings::Settings;
-use utility::*;
 use window::*;
 
 const TITLE: &str = "HLSL Box";
@@ -47,14 +45,16 @@ static ENV_ARGS: Lazy<EnvArgs> = Lazy::new(|| {
 });
 
 static EXE_DIR_PATH: Lazy<std::path::PathBuf> = Lazy::new(|| {
-    std::env::current_exe().unwrap().parent().unwrap().to_path_buf()
+    std::env::current_exe()
+        .unwrap()
+        .parent()
+        .unwrap()
+        .to_path_buf()
 });
 
-static SETTINGS_PATH: Lazy<std::path::PathBuf> = Lazy::new(|| {
-    EXE_DIR_PATH.join("settings.toml")
-});
+static SETTINGS_PATH: Lazy<std::path::PathBuf> = Lazy::new(|| EXE_DIR_PATH.join("settings.toml"));
 
-fn logger() {
+fn set_logger() {
     use std::fs::File;
     use tracing_subscriber::{filter::LevelFilter, prelude::*};
 
@@ -65,7 +65,9 @@ fn logger() {
     };
     let file = tracing_subscriber::fmt::layer()
         .compact()
-        .with_writer(Arc::new(File::create(EXE_DIR_PATH.join("hlsl_box.log")).unwrap()))
+        .with_writer(Arc::new(
+            File::create(EXE_DIR_PATH.join("hlsl_box.log")).unwrap(),
+        ))
         .with_ansi(false)
         .with_line_number(true)
         .with_filter(filter);
@@ -79,27 +81,22 @@ fn logger() {
         .init();
 }
 
-fn main() {
-    unsafe {
-        let locale = std::ffi::CString::new(LOCALE.as_ref().map_or("", |l| l.as_str())).unwrap();
-        libc::setlocale(libc::LC_ALL, locale.as_ptr());
-    }
-    logger();
-    std::panic::set_hook(Box::new(|info| unsafe {
-        use windows::Win32::Foundation::HWND;
-        use windows::Win32::UI::WindowsAndMessaging::*;
-        let msg = info
-            .payload()
-            .downcast_ref::<String>()
-            .map(|s| s.as_str())
-            .or_else(|| info.payload().downcast_ref::<&str>().copied());
-        match msg {
-            Some(msg) => {
-                let s = match info.location() {
-                    Some(loc) => format!("{} ({}:{})", msg, loc.file(), loc.line()),
-                    None => msg.to_string(),
-                };
-                if !ENV_ARGS.nomodal {
+fn panic_handler(info: &std::panic::PanicInfo) {
+    use windows::Win32::Foundation::HWND;
+    use windows::Win32::UI::WindowsAndMessaging::*;
+    let msg = info
+        .payload()
+        .downcast_ref::<String>()
+        .map(|s| s.as_str())
+        .or_else(|| info.payload().downcast_ref::<&str>().copied());
+    match msg {
+        Some(msg) => {
+            let s = match info.location() {
+                Some(loc) => format!("{} ({}:{})", msg, loc.file(), loc.line()),
+                None => msg.to_string(),
+            };
+            if !ENV_ARGS.nomodal {
+                unsafe {
                     MessageBoxW(
                         HWND(0),
                         s.as_str(),
@@ -107,19 +104,32 @@ fn main() {
                         MB_OK | MB_ICONERROR | MB_SYSTEMMODAL,
                     );
                 }
-                error!("panic: {}", s);
             }
-            None => {
-                let e = Error::UnknownError;
-                match info.location() {
-                    Some(loc) => error!("panic: {} ({}:{})", e, loc.file(), loc.line()),
-                    None => error!("panic: {}", e),
-                }
+            error!("panic: {}", s);
+        }
+        None => {
+            let e = Error::UnknownError;
+            match info.location() {
+                Some(loc) => error!("panic: {} ({}:{})", e, loc.file(), loc.line()),
+                None => error!("panic: {}", e),
             }
-        };
-    }));
+        }
+    };
+}
+
+fn set_locale() {
+    unsafe {
+        let locale = std::ffi::CString::new(LOCALE.as_ref().map_or("", |l| l.as_str())).unwrap();
+        libc::setlocale(libc::LC_ALL, locale.as_ptr());
+    }
+}
+
+fn main() {
+    set_logger();
+    std::panic::set_hook(Box::new(panic_handler));
     info!("start");
     debug!("ENV_ARGS: {:?}", &*ENV_ARGS);
+    set_locale();
     let _coinit = coinit::init(coinit::APARTMENTTHREADED | coinit::DISABLE_OLE1DDE).unwrap();
     let th_handle = Rc::new(RefCell::new(None));
     let th_handle_f = th_handle.clone();

@@ -16,9 +16,22 @@ pub enum WindowEvent {
 
 pub struct WindowReceiver {
     pub main_window: wita::Window,
-    pub event: mpsc::Receiver<WindowEvent>,
-    pub sync_event: mpsc::Receiver<WindowEvent>,
-    pub cursor_position: Arc<Mutex<wita::PhysicalPosition<i32>>>,
+    event: mpsc::Receiver<WindowEvent>,
+    sync_event: mpsc::Receiver<WindowEvent>,
+    cursor_position: Arc<Mutex<wita::PhysicalPosition<i32>>>,
+}
+
+impl WindowReceiver {
+    pub fn try_recv(&self) -> Option<WindowEvent> {
+        self.sync_event
+            .try_recv()
+            .ok()
+            .or_else(|| self.event.try_recv().ok())
+    }
+
+    pub fn get_cursor_position(&self) -> wita::PhysicalPosition<i32> {
+        *self.cursor_position.lock().unwrap()
+    }
 }
 
 pub struct KeyboardMap(HashMap<Vec<wita::VirtualKey>, Method>);
