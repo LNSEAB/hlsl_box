@@ -126,7 +126,7 @@ fn set_locale() {
 
 fn main() {
     set_logger();
-    std::panic::set_hook(Box::new(|info| panic_handler(info)));
+    std::panic::set_hook(Box::new(panic_handler));
     info!("start");
     debug!("ENV_ARGS: {:?}", &*ENV_ARGS);
     set_locale();

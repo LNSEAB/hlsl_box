@@ -181,4 +181,3 @@ impl ErrorMessage {
         self.create_text_layouts(v, &cs.iter().skip(pos + 1).collect::<String>(), size)
     }
 }
-

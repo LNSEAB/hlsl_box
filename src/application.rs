@@ -147,7 +147,11 @@ impl Application {
     fn load_file(&mut self, path: &Path) -> Result<(), Error> {
         assert!(path.is_file());
         let parent = path.parent().unwrap();
-        if self.dir_monitor.as_ref().map_or(true, |d| d.path() != parent) {
+        let same_dir_monitor = self
+            .dir_monitor
+            .as_ref()
+            .map_or(true, |d| d.path() != parent);
+        if same_dir_monitor {
             debug!("load_file: DirMonitor::new: {}", parent.display());
             self.dir_monitor = Some(DirMonitor::new(parent)?);
         }
@@ -177,31 +181,21 @@ impl Application {
         self.start_time = std::time::Instant::now();
         self.window_receiver
             .main_window
-            .set_title(format!("HLSLBox {}", path.display()));
+            .set_title(format!("{} {}", TITLE, path.display()));
         info!("load file: {}", path.display());
         Ok(())
     }
 
     pub fn run(&mut self) -> Result<(), Error> {
         loop {
-            let sync_event = self.window_receiver.sync_event.try_recv();
-            if let Ok(WindowEvent::Closed(window)) = sync_event {
-                debug!("WindowEvent::Closed");
-                self.settings.window = window;
-                match self.settings.save(&*SETTINGS_PATH) {
-                    Ok(_) => info!("saved settings"),
-                    Err(e) => error!("save settings: {}", e),
-                }
-                break;
-            }
-            match self.window_receiver.event.try_recv() {
-                Ok(WindowEvent::LoadFile(path)) => {
+            match self.window_receiver.try_recv() {
+                Some(WindowEvent::LoadFile(path)) => {
                     debug!("WindowEvent::LoadFile");
                     if let Err(e) = self.load_file(&path) {
                         self.set_error(&path, e)?;
                     }
                 }
-                Ok(WindowEvent::KeyInput(m)) => {
+                Some(WindowEvent::KeyInput(m)) => {
                     debug!("WindowEvent::KeyInput");
                     match m {
                         Method::OpenDialog => {
@@ -223,7 +217,7 @@ impl Application {
                         }
                     }
                 }
-                Ok(WindowEvent::Wheel(d)) => {
+                Some(WindowEvent::Wheel(d)) => {
                     debug!("WindowEvent::Wheel");
                     if let State::Error(em) = &mut self.state {
                         let main_window = &self.window_receiver.main_window;
@@ -232,7 +226,7 @@ impl Application {
                         em.offset([size.width, size.height].into(), d)?;
                     }
                 }
-                Ok(WindowEvent::Resized(size)) => {
+                Some(WindowEvent::Resized(size)) => {
                     debug!("WindowEvent::Resized");
                     if let Err(e) = self.renderer.resize(size) {
                         error!("{}", e);
@@ -244,7 +238,7 @@ impl Application {
                         e.update([size.width, size.height].into())?;
                     }
                 }
-                Ok(WindowEvent::Restored(size)) => {
+                Some(WindowEvent::Restored(size)) => {
                     debug!("WindowEvent::Restored");
                     if let Err(e) = self.renderer.restore(size) {
                         error!("{}", e);
@@ -256,10 +250,10 @@ impl Application {
                         e.update([size.width, size.height].into())?;
                     }
                 }
-                Ok(WindowEvent::Minimized) => {
+                Some(WindowEvent::Minimized) => {
                     debug!("WindowEvent::Minimized");
                 }
-                Ok(WindowEvent::Maximized(size)) => {
+                Some(WindowEvent::Maximized(size)) => {
                     debug!("WindowEvent::Maximized");
                     if let Err(e) = self.renderer.maximize(size) {
                         error!("{}", e);
@@ -271,7 +265,7 @@ impl Application {
                         e.update([size.width, size.height].into())?;
                     }
                 }
-                Ok(WindowEvent::DpiChanged(dpi)) => {
+                Some(WindowEvent::DpiChanged(dpi)) => {
                     debug!("WindowEvent::DpiChanged");
                     if let Err(e) = self.renderer.change_dpi(dpi) {
                         error!("{}", e);
@@ -280,6 +274,15 @@ impl Application {
                     if let Err(e) = self.renderer.resize(size) {
                         error!("{}", e);
                     }
+                }
+                Some(WindowEvent::Closed(window)) => {
+                    debug!("WindowEvent::Closed");
+                    self.settings.window = window;
+                    match self.settings.save(&*SETTINGS_PATH) {
+                        Ok(_) => info!("saved settings"),
+                        Err(e) => error!("save settings: {}", e),
+                    }
+                    break;
                 }
                 _ => {}
             }
@@ -305,7 +308,7 @@ impl Application {
             if let State::Rendering(r) = &mut self.state {
                 r.parameters.mouse = {
                     let size = self.window_receiver.main_window.inner_size().cast::<f32>();
-                    let cursor_position = self.window_receiver.cursor_position.lock().unwrap();
+                    let cursor_position = self.window_receiver.get_cursor_position();
                     [
                         cursor_position.x as f32 / size.width,
                         cursor_position.y as f32 / size.height,
