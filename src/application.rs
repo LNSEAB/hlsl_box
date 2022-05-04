@@ -1,3 +1,6 @@
+mod error_message;
+mod frame_counter;
+
 use crate::*;
 use std::{
     cell::Cell,
@@ -6,6 +9,9 @@ use std::{
     rc::Rc,
 };
 use windows::Win32::Graphics::{Direct3D::*, Direct3D12::*};
+
+use error_message::*;
+use frame_counter::*;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Method {
@@ -21,257 +27,12 @@ struct UiProperties {
     bg_color: mltg::Brush,
 }
 
-struct FrameCounter {
-    count: Cell<u64>,
-    text_layout: RefCell<mltg::TextLayout>,
-    frame_start_time: Cell<std::time::Instant>,
-    ui_props: UiProperties,
-}
-
-impl FrameCounter {
-    fn new(ui_props: &UiProperties) -> Result<Self, Error> {
-        let text_layout = ui_props.factory.create_text_layout(
-            "0",
-            &ui_props.text_format,
-            mltg::TextAlignment::Center,
-            None,
-        )?;
-        Ok(Self {
-            count: Cell::new(0),
-            text_layout: RefCell::new(text_layout),
-            frame_start_time: Cell::new(std::time::Instant::now()),
-            ui_props: ui_props.clone(),
-        })
-    }
-
-    fn reset(&self) {
-        self.count.set(0);
-        self.frame_start_time.set(std::time::Instant::now());
-    }
-
-    fn update(&self) -> Result<(), Error> {
-        if (std::time::Instant::now() - self.frame_start_time.get()).as_millis() >= 1000 {
-            let text_layout = self.ui_props.factory.create_text_layout(
-                &self.count.get().to_string(),
-                &self.ui_props.text_format,
-                mltg::TextAlignment::Center,
-                None,
-            )?;
-            *self.text_layout.borrow_mut() = text_layout;
-            self.reset();
-        } else {
-            self.count.set(self.count.get() + 1);
-        }
-        Ok(())
-    }
-
-    fn draw(&self, cmd: &mltg::DrawCommand, pos: impl Into<mltg::Point>) {
-        let margin = mltg::Size::new(5.0, 3.0);
-        let text_layout = self.text_layout.borrow();
-        let pos = pos.into();
-        let size = text_layout.size();
-        cmd.fill(
-            &mltg::Rect::new(
-                pos,
-                [
-                    size.width + margin.width * 2.0,
-                    size.height + margin.height * 2.0,
-                ],
-            ),
-            &self.ui_props.bg_color,
-        );
-        cmd.draw_text_layout(
-            &text_layout,
-            &self.ui_props.text_color,
-            [pos.x + margin.width, pos.y + margin.height],
-        );
-    }
-}
-
 struct Rendering {
     path: PathBuf,
     parameters: pixel_shader::Parameters,
     ps: pixel_shader::Pipeline,
     frame_counter: FrameCounter,
     show_frame_counter: Rc<Cell<bool>>,
-}
-
-struct ErrorMessage {
-    path: PathBuf,
-    window: wita::Window,
-    ui_props: UiProperties,
-    text: Vec<String>,
-    layouts: VecDeque<Vec<mltg::TextLayout>>,
-    current_line: u32,
-}
-
-impl ErrorMessage {
-    fn new(
-        path: PathBuf,
-        window: wita::Window,
-        e: &Error,
-        ui_props: &UiProperties,
-        size: mltg::Size,
-    ) -> Result<Self, Error> {
-        let text = format!("{}", e);
-        let text = text.split('\n').map(|t| t.to_string()).collect::<Vec<_>>();
-        let layouts = VecDeque::new();
-        let mut this = Self {
-            path,
-            window,
-            ui_props: ui_props.clone(),
-            text,
-            layouts,
-            current_line: 0,
-        };
-        let mut index = 0;
-        let mut height = 0.0;
-        while index < this.text.len() && height < size.height {
-            let mut buffer = Vec::new();
-            this.create_text_layouts(&mut buffer, &this.text[index], size)?;
-            height += buffer.iter().fold(0.0, |h, l| h + l.size().height);
-            this.layouts.push_back(buffer);
-            index += 1;
-        }
-        Ok(this)
-    }
-
-    fn offset(&mut self, size: mltg::Size, d: i32) -> Result<(), Error> {
-        let mut line = self.current_line;
-        if d < 0 {
-            let d = d.abs() as u32;
-            if line <= d {
-                line = 0;
-            } else {
-                line -= d;
-            }
-        } else {
-            line = (line + d as u32).min(self.text.len() as u32 - 1);
-        }
-        if self.current_line == line {
-            return Ok(());
-        }
-        if self.current_line > line {
-            let mut index = self.current_line as isize - 1;
-            while index >= line as _ {
-                let mut buffer = Vec::new();
-                self.create_text_layouts(&mut buffer, &self.text[index as usize], size)?;
-                self.layouts.push_front(buffer);
-                index -= 1;
-            }
-            let mut height = self
-                .layouts
-                .iter()
-                .flatten()
-                .fold(0.0, |h, l| h + l.size().height);
-            while height
-                - self
-                    .layouts
-                    .back()
-                    .unwrap()
-                    .iter()
-                    .fold(0.0, |h, l| h + l.size().height)
-                > size.height
-            {
-                let back = self.layouts.pop_back().unwrap();
-                height -= back.iter().fold(0.0, |h, l| h + l.size().height);
-            }
-        } else {
-            let mut height = self
-                .layouts
-                .iter()
-                .flatten()
-                .fold(0.0, |h, l| h + l.size().height);
-            let d = line - self.current_line;
-            self.layouts.drain(..d as usize);
-            let mut index = line as usize + self.layouts.len();
-            while index < self.text.len() && height < size.height {
-                let mut buffer = Vec::new();
-                self.create_text_layouts(&mut buffer, &self.text[index], size)?;
-                height += buffer.iter().fold(0.0, |h, l| h + l.size().height);
-                self.layouts.push_back(buffer);
-                index += 1;
-            }
-        }
-        self.current_line = line;
-        Ok(())
-    }
-
-    fn draw(&self, cmd: &mltg::DrawCommand) {
-        let size = self
-            .window
-            .inner_size()
-            .to_logical(self.window.dpi())
-            .cast::<f32>();
-        cmd.fill(
-            &mltg::Rect::new([0.0, 0.0], [size.width, size.height]),
-            &self.ui_props.bg_color,
-        );
-        let mut y = 0.0;
-        for line in &self.layouts {
-            for layout in line {
-                cmd.draw_text_layout(layout, &self.ui_props.text_color, [0.0, y]);
-                y += layout.size().height;
-            }
-        }
-    }
-
-    fn update(&mut self, size: mltg::Size) -> Result<(), Error> {
-        let mut height = 0.0;
-        let mut index = self.current_line as usize;
-        self.layouts.clear();
-        while index < self.text.len() && height < size.height {
-            let mut buffer = Vec::new();
-            self.create_text_layouts(&mut buffer, &self.text[index], size)?;
-            height += buffer.iter().fold(0.0, |h, l| h + l.size().height);
-            self.layouts.push_back(buffer);
-            index += 1;
-        }
-        Ok(())
-    }
-
-    fn create_text_layouts(
-        &self,
-        v: &mut Vec<mltg::TextLayout>,
-        text: &str,
-        size: mltg::Size,
-    ) -> Result<(), Error> {
-        let layout = self.ui_props.factory.create_text_layout(
-            text,
-            &self.ui_props.text_format,
-            mltg::TextAlignment::Leading,
-            None,
-        )?;
-        let test = layout.hit_test(mltg::point(size.width, 0.0));
-        if !test.inside {
-            v.push(layout);
-            return Ok(());
-        }
-        let mut pos = test.text_position - 1;
-        let cs = text.chars().collect::<Vec<char>>();
-        let mut c = cs[pos];
-        if c.is_ascii() {
-            loop {
-                if pos == 0 {
-                    pos = test.text_position - 1;
-                    break;
-                }
-                if !c.is_ascii() || c == ' ' {
-                    break;
-                }
-                pos -= 1;
-                c = cs[pos];
-            }
-        }
-        let layout = self.ui_props.factory.create_text_layout(
-            &cs.iter().take(pos + 1).collect::<String>(),
-            &self.ui_props.text_format,
-            mltg::TextAlignment::Leading,
-            None,
-        )?;
-        v.push(layout);
-        self.create_text_layouts(v, &cs.iter().skip(pos + 1).collect::<String>(), size)
-    }
 }
 
 enum State {
@@ -532,7 +293,7 @@ impl Application {
                         }
                     }
                     State::Error(e) => {
-                        if e.path == path {
+                        if e.path() == path {
                             if let Err(e) = self.load_file(&path) {
                                 self.set_error(&path, e)?;
                             }
