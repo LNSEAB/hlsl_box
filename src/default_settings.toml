@@ -22,3 +22,10 @@ font = "Yu Gothic UI"
 font_size = 12.0
 text_color = [1.0, 1.0, 1.0, 1.0]
 background_color = [0.0, 0.0, 0.0, 0.7]
+
+[appearance.scroll_bar]
+width = 15.0
+bg_color = [0.1, 0.1, 0.1, 0.7]
+thumb_color = [0.7, 0.7, 0.7, 0.7]
+thumb_hover_color = [0.7, 0.7, 0.7, 0.9]
+thumb_moving_color = [0.8, 0.8, 0.8, 1.0]

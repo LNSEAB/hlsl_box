@@ -135,6 +135,7 @@ fn main() {
     let th_handle_f = th_handle.clone();
     let f = move || -> Result<WindowManager, Error> {
         let settings = Settings::load(&*SETTINGS_PATH)?;
+        debug!("settings: {:?}", settings);
         let mut key_map = KeyboardMap::new();
         key_map.insert(
             vec![wita::VirtualKey::Ctrl, wita::VirtualKey::Char('O')],

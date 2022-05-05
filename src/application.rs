@@ -20,11 +20,22 @@ pub enum Method {
 }
 
 #[derive(Clone)]
+struct ScrollBarProperties {
+    width: f32,
+    bg_color: mltg::Brush,
+    thumb_color: mltg::Brush,
+    thumb_hover_color: mltg::Brush,
+    thumb_moving_color: mltg::Brush,
+}
+
+#[derive(Clone)]
 struct UiProperties {
     factory: mltg::Factory,
     text_format: mltg::TextFormat,
     text_color: mltg::Brush,
     bg_color: mltg::Brush,
+    scroll_bar: ScrollBarProperties,
+    line_height: f32,
 }
 
 struct Rendering {
@@ -115,11 +126,39 @@ impl Application {
         )?;
         let text_color = factory.create_solid_color_brush(settings.appearance.text_color)?;
         let bg_color = factory.create_solid_color_brush(settings.appearance.background_color)?;
+        let scroll_bar = {
+            let bg_color =
+                factory.create_solid_color_brush(settings.appearance.scroll_bar.bg_color)?;
+            let thumb_color =
+                factory.create_solid_color_brush(settings.appearance.scroll_bar.thumb_color)?;
+            let thumb_hover_color = factory
+                .create_solid_color_brush(settings.appearance.scroll_bar.thumb_hover_color)?;
+            let thumb_moving_color = factory
+                .create_solid_color_brush(settings.appearance.scroll_bar.thumb_moving_color)?;
+            ScrollBarProperties {
+                width: settings.appearance.scroll_bar.width,
+                bg_color,
+                thumb_color,
+                thumb_hover_color,
+                thumb_moving_color,
+            }
+        };
+        let line_height = {
+            let layout = factory.create_text_layout(
+                "A",
+                &text_format,
+                mltg::TextAlignment::Leading,
+                None,
+            )?;
+            layout.size().height
+        };
         let ui_props = UiProperties {
             factory,
             text_format,
             text_color,
             bg_color,
+            scroll_bar,
+            line_height,
         };
         let show_frame_counter = Rc::new(Cell::new(settings.frame_counter));
         let mut this = Self {
@@ -188,6 +227,7 @@ impl Application {
 
     pub fn run(&mut self) -> Result<(), Error> {
         loop {
+            let cursor_position = self.window_receiver.get_cursor_position();
             match self.window_receiver.try_recv() {
                 Some(WindowEvent::LoadFile(path)) => {
                     debug!("WindowEvent::LoadFile");
@@ -217,13 +257,23 @@ impl Application {
                         }
                     }
                 }
+                Some(WindowEvent::MouseInput(button, state)) => {
+                    debug!("WindowEvent::MouseInput");
+                    if let State::Error(em) = &mut self.state {
+                        let main_window = &self.window_receiver.main_window;
+                        let dpi = main_window.dpi();
+                        let size = main_window.inner_size().to_logical(dpi).cast::<f32>();
+                        let mouse_pos = cursor_position.to_logical(dpi as _).cast::<f32>();
+                        em.mouse_event(size, mouse_pos, Some((button, state)));
+                    }
+                }
                 Some(WindowEvent::Wheel(d)) => {
                     debug!("WindowEvent::Wheel");
                     if let State::Error(em) = &mut self.state {
                         let main_window = &self.window_receiver.main_window;
                         let dpi = main_window.dpi();
                         let size = main_window.inner_size().to_logical(dpi).cast::<f32>();
-                        em.offset([size.width, size.height].into(), d)?;
+                        em.offset(size, d)?;
                     }
                 }
                 Some(WindowEvent::Resized(size)) => {
@@ -235,7 +285,7 @@ impl Application {
                         let main_window = &self.window_receiver.main_window;
                         let dpi = main_window.dpi();
                         let size = main_window.inner_size().to_logical(dpi).cast::<f32>();
-                        e.update([size.width, size.height].into())?;
+                        e.recreate(size)?;
                     }
                 }
                 Some(WindowEvent::Restored(size)) => {
@@ -247,7 +297,7 @@ impl Application {
                         let main_window = &self.window_receiver.main_window;
                         let dpi = main_window.dpi();
                         let size = size.to_logical(dpi).cast::<f32>();
-                        e.update([size.width, size.height].into())?;
+                        e.recreate(size)?;
                     }
                 }
                 Some(WindowEvent::Minimized) => {
@@ -262,7 +312,7 @@ impl Application {
                         let main_window = &self.window_receiver.main_window;
                         let dpi = main_window.dpi();
                         let size = size.to_logical(dpi).cast::<f32>();
-                        e.update([size.width, size.height].into())?;
+                        e.recreate(size)?;
                     }
                 }
                 Some(WindowEvent::DpiChanged(dpi)) => {
@@ -284,7 +334,15 @@ impl Application {
                     }
                     break;
                 }
-                _ => {}
+                _ => {
+                    if let State::Error(em) = &mut self.state {
+                        let main_window = &self.window_receiver.main_window;
+                        let dpi = main_window.dpi();
+                        let size = main_window.inner_size().to_logical(dpi).cast::<f32>();
+                        let mouse_pos = cursor_position.to_logical(dpi as _).cast::<f32>();
+                        em.mouse_event(size, mouse_pos, None);
+                    }
+                }
             }
             if let Some(path) = self.dir_monitor.as_ref().and_then(|dir| dir.try_recv()) {
                 match &self.state {
@@ -308,7 +366,6 @@ impl Application {
             if let State::Rendering(r) = &mut self.state {
                 r.parameters.mouse = {
                     let size = self.window_receiver.main_window.inner_size().cast::<f32>();
-                    let cursor_position = self.window_receiver.get_cursor_position();
                     [
                         cursor_position.x as f32 / size.width,
                         cursor_position.y as f32 / size.height,

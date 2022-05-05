@@ -30,7 +30,7 @@
             "type": "cppvsdbg",
             "request": "launch",
             "program": "${workspaceFolder}/target/debug/${workspaceFolderBasename}.exe",
-            "args": ["--debuglayer", "--nomodal", "${workspaceFolder}/README.md"],
+            "args": ["--debuglayer", "--nomodal", "${workspaceFolder}/src/shader/error.hlsl"],
             "stopAtEntry": false,
             "cwd": "${workspaceFolder}",
             "environment": [],

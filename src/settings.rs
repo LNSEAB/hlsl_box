@@ -53,12 +53,22 @@ pub struct Shader {
 }
 
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+pub struct ScrollBar {
+    pub width: f32,
+    pub bg_color: [f32; 4],
+    pub thumb_color: [f32; 4],
+    pub thumb_hover_color: [f32; 4],
+    pub thumb_moving_color: [f32; 4],
+}
+
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct Appearance {
     pub clear_color: [f32; 3],
     pub font: String,
     pub font_size: f32,
     pub text_color: [f32; 4],
     pub background_color: [f32; 4],
+    pub scroll_bar: ScrollBar,
 }
 
 #[derive(Debug, serde::Serialize, serde::Deserialize)]

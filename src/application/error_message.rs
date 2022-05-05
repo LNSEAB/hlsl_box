@@ -1,4 +1,12 @@
 use super::*;
+use gecl::Collision as _;
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum ScrollBarState {
+    None,
+    Hover,
+    Moving,
+}
 
 pub(super) struct ErrorMessage {
     path: PathBuf,
@@ -6,7 +14,9 @@ pub(super) struct ErrorMessage {
     ui_props: UiProperties,
     text: Vec<String>,
     layouts: VecDeque<Vec<mltg::TextLayout>>,
-    current_line: u32,
+    current_line: usize,
+    scroll_bar_state: ScrollBarState,
+    dy: f32,
 }
 
 impl ErrorMessage {
@@ -15,7 +25,7 @@ impl ErrorMessage {
         window: wita::Window,
         e: &Error,
         ui_props: &UiProperties,
-        size: mltg::Size,
+        size: wita::LogicalSize<f32>,
     ) -> Result<Self, Error> {
         let text = format!("{}", e);
         let text = text.split('\n').map(|t| t.to_string()).collect::<Vec<_>>();
@@ -27,6 +37,8 @@ impl ErrorMessage {
             text,
             layouts,
             current_line: 0,
+            scroll_bar_state: ScrollBarState::None,
+            dy: 0.0,
         };
         let mut index = 0;
         let mut height = 0.0;
@@ -40,17 +52,25 @@ impl ErrorMessage {
         Ok(this)
     }
 
-    pub fn offset(&mut self, size: mltg::Size, d: i32) -> Result<(), Error> {
+    pub fn path(&self) -> &Path {
+        &self.path
+    }
+
+    pub fn offset(&mut self, size: wita::LogicalSize<f32>, d: i32) -> Result<(), Error> {
+        if d == 0 {
+            return Ok(());
+        }
+        let size = wita::LogicalSize::new(size.width - self.ui_props.scroll_bar.width, size.height);
         let mut line = self.current_line;
         if d < 0 {
-            let d = d.abs() as u32;
+            let d = d.abs() as usize;
             if line <= d {
                 line = 0;
             } else {
                 line -= d;
             }
         } else {
-            line = (line + d as u32).min(self.text.len() as u32 - 1);
+            line = (line + d as usize).min(self.text.len() - 1);
         }
         if self.current_line == line {
             return Ok(());
@@ -101,6 +121,61 @@ impl ErrorMessage {
         Ok(())
     }
 
+    pub fn mouse_event(
+        &mut self,
+        view_size: wita::LogicalSize<f32>,
+        mouse_pos: wita::LogicalPosition<f32>,
+        button: Option<(wita::MouseButton, wita::KeyState)>,
+    ) {
+        let props = &self.ui_props.scroll_bar;
+        let line_height = self.ui_props.line_height;
+        let x = view_size.width - props.width;
+        let a = self.text.len() as f32 + view_size.height / line_height - 1.0;
+        let thumb_origin = [x, self.current_line as f32 * view_size.height / a];
+        let thumb_size = [
+            props.width,
+            view_size.height * view_size.height / line_height / a,
+        ];
+        let mouse_pos = gecl::point(mouse_pos.x, mouse_pos.y);
+        let thumb_rc = gecl::rect(thumb_origin, thumb_size);
+        match self.scroll_bar_state {
+            ScrollBarState::None => {
+                if thumb_rc.is_crossing(&mouse_pos) {
+                    if let Some((wita::MouseButton::Left, wita::KeyState::Pressed)) = button {
+                        self.scroll_bar_state = ScrollBarState::Moving;
+                        self.dy = mouse_pos.y - thumb_origin[1];
+                    } else {
+                        self.scroll_bar_state = ScrollBarState::Hover;
+                    }
+                }
+            }
+            ScrollBarState::Hover => {
+                if thumb_rc.is_crossing(&mouse_pos) {
+                    if let Some((wita::MouseButton::Left, wita::KeyState::Pressed)) = button {
+                        self.scroll_bar_state = ScrollBarState::Moving;
+                        self.dy = mouse_pos.y - thumb_origin[1];
+                    }
+                } else {
+                    self.scroll_bar_state = ScrollBarState::None;
+                }
+            }
+            ScrollBarState::Moving => {
+                let line = ((mouse_pos.y - self.dy) / (self.text.len() - 1) as f32)
+                    .floor()
+                    .clamp(0.0, (self.text.len() - 1) as f32) as usize;
+                self.offset(view_size, line as i32 - self.current_line as i32)
+                    .unwrap();
+                if let Some((wita::MouseButton::Left, wita::KeyState::Released)) = button {
+                    if thumb_rc.is_crossing(&mouse_pos) {
+                        self.scroll_bar_state = ScrollBarState::Hover;
+                    } else {
+                        self.scroll_bar_state = ScrollBarState::None;
+                    }
+                }
+            }
+        }
+    }
+
     pub fn draw(&self, cmd: &mltg::DrawCommand) {
         let size = self
             .window
@@ -118,9 +193,33 @@ impl ErrorMessage {
                 y += layout.size().height;
             }
         }
+        self.draw_scroll_bar(cmd, size);
     }
 
-    pub fn update(&mut self, size: mltg::Size) -> Result<(), Error> {
+    fn draw_scroll_bar(&self, cmd: &mltg::DrawCommand, view_size: wita::LogicalSize<f32>) {
+        let props = &self.ui_props.scroll_bar;
+        let line_height = self.ui_props.line_height;
+        let bg_origin = [view_size.width - props.width, 0.0];
+        let bg_size = [props.width, view_size.height];
+        cmd.fill(&mltg::Rect::new(bg_origin, bg_size), &props.bg_color);
+        let a = self.text.len() as f32 + view_size.height / line_height - 1.0;
+        let thumb_origin = [
+            bg_origin[0],
+            self.current_line as f32 * view_size.height / a,
+        ];
+        let thumb_size = [
+            props.width,
+            view_size.height * view_size.height / line_height / a,
+        ];
+        let color = match self.scroll_bar_state {
+            ScrollBarState::None => &props.thumb_color,
+            ScrollBarState::Hover => &props.thumb_hover_color,
+            ScrollBarState::Moving => &props.thumb_moving_color,
+        };
+        cmd.fill(&mltg::Rect::new(thumb_origin, thumb_size), color);
+    }
+
+    pub fn recreate(&mut self, size: wita::LogicalSize<f32>) -> Result<(), Error> {
         let mut height = 0.0;
         let mut index = self.current_line as usize;
         self.layouts.clear();
@@ -134,15 +233,11 @@ impl ErrorMessage {
         Ok(())
     }
 
-    pub fn path(&self) -> &Path {
-        &self.path
-    }
-
     fn create_text_layouts(
         &self,
         v: &mut Vec<mltg::TextLayout>,
         text: &str,
-        size: mltg::Size,
+        size: wita::LogicalSize<f32>,
     ) -> Result<(), Error> {
         let layout = self.ui_props.factory.create_text_layout(
             text,
@@ -150,7 +245,10 @@ impl ErrorMessage {
             mltg::TextAlignment::Leading,
             None,
         )?;
-        let test = layout.hit_test(mltg::point(size.width, 0.0));
+        let test = layout.hit_test(mltg::point(
+            size.width - self.ui_props.scroll_bar.width,
+            0.0,
+        ));
         if !test.inside {
             v.push(layout);
             return Ok(());
