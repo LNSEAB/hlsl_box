@@ -56,7 +56,10 @@ impl ErrorMessage {
         &self.path
     }
 
-    pub fn offset(&mut self, size: mltg::Size, d: i32) -> Result<(), Error> {
+    pub fn offset(&mut self, size: wita::LogicalSize<f32>, d: i32) -> Result<(), Error> {
+        if d == 0 {
+            return Ok(());
+        }
         let size = mltg::Size::new(size.width - self.ui_props.scroll_bar.width, size.height);
         let mut line = self.current_line;
         if d < 0 {
@@ -157,11 +160,10 @@ impl ErrorMessage {
                 }
             }
             ScrollBarState::Moving => {
-                self.current_line = ((mouse_pos.y - self.dy) / (self.text.len() - 1) as f32)
+                let line = ((mouse_pos.y - self.dy) / (self.text.len() - 1) as f32)
                     .floor()
-                    .clamp(0.0, (self.text.len() - 1) as f32)
-                    as usize;
-                self.recreate([view_size.width, view_size.height].into())
+                    .clamp(0.0, (self.text.len() - 1) as f32) as usize;
+                self.offset(view_size, line as i32 - self.current_line as i32)
                     .unwrap();
                 if let Some((wita::MouseButton::Left, wita::KeyState::Released)) = button {
                     if thumb_rc.is_crossing(&mouse_pos) {

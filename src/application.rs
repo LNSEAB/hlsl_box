@@ -273,7 +273,7 @@ impl Application {
                         let main_window = &self.window_receiver.main_window;
                         let dpi = main_window.dpi();
                         let size = main_window.inner_size().to_logical(dpi).cast::<f32>();
-                        em.offset([size.width, size.height].into(), d)?;
+                        em.offset(size, d)?;
                     }
                 }
                 Some(WindowEvent::Resized(size)) => {
