@@ -363,18 +363,15 @@ impl Application {
                     _ => {}
                 }
             }
-            match &mut self.state {
-                State::Rendering(r) => {
-                    r.parameters.mouse = {
-                        let size = self.window_receiver.main_window.inner_size().cast::<f32>();
-                        [
-                            cursor_position.x as f32 / size.width,
-                            cursor_position.y as f32 / size.height,
-                        ]
-                    };
-                    r.parameters.time = (std::time::Instant::now() - self.start_time).as_secs_f32();
-                }
-                _ => {}
+            if let State::Rendering(r) = &mut self.state {
+                r.parameters.mouse = {
+                    let size = self.window_receiver.main_window.inner_size().cast::<f32>();
+                    [
+                        cursor_position.x as f32 / size.width,
+                        cursor_position.y as f32 / size.height,
+                    ]
+                };
+                r.parameters.time = (std::time::Instant::now() - self.start_time).as_secs_f32();
             }
             let ret = match &self.state {
                 State::Rendering(r) => self.renderer.render(

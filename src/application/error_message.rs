@@ -216,7 +216,7 @@ impl ErrorMessage {
             ScrollBarState::Hover => &props.thumb_hover_color,
             ScrollBarState::Moving => &props.thumb_moving_color,
         };
-        cmd.fill(&mltg::Rect::new(thumb_origin, thumb_size), &color);
+        cmd.fill(&mltg::Rect::new(thumb_origin, thumb_size), color);
     }
 
     pub fn recreate(&mut self, size: wita::LogicalSize<f32>) -> Result<(), Error> {
