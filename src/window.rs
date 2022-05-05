@@ -8,6 +8,7 @@ pub enum WindowEvent {
     KeyInput(Method),
     DpiChanged(u32),
     Wheel(i32),
+    MouseInput(wita::MouseButton, wita::KeyState),
     Restored(wita::PhysicalSize<u32>),
     Minimized,
     Maximized(wita::PhysicalSize<u32>),
@@ -172,6 +173,14 @@ impl wita::EventHandler for WindowManager {
                 }
             }
             debug!("main_window key_input");
+        }
+    }
+
+    fn mouse_input(&mut self, ev: wita::event::MouseInput) {
+        if ev.window == &self.main_window {
+            self.event
+                .send(WindowEvent::MouseInput(ev.button, ev.button_state))
+                .ok();
         }
     }
 

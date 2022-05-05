@@ -25,5 +25,7 @@ background_color = [0.0, 0.0, 0.0, 0.7]
 
 [appearance.scroll_bar]
 width = 15.0
-bg_color = [0.1, 0.1, 0.1, 1.0]
-thumb_color = [0.7, 0.7, 0.7, 1.0]
+bg_color = [0.1, 0.1, 0.1, 0.7]
+thumb_color = [0.7, 0.7, 0.7, 0.7]
+thumb_hover_color = [0.7, 0.7, 0.7, 0.9]
+thumb_moving_color = [0.8, 0.8, 0.8, 1.0]
