@@ -24,6 +24,6 @@ text_color = [1.0, 1.0, 1.0, 1.0]
 background_color = [0.0, 0.0, 0.0, 0.7]
 
 [appearance.scroll_bar]
-width = 20.0
-bg_color = [0.1, 0.1, 0.1]
-thumb_color = [0.7, 0.7, 0.7]
+width = 15.0
+bg_color = [0.1, 0.1, 0.1, 1.0]
+thumb_color = [0.7, 0.7, 0.7, 1.0]

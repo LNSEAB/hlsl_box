@@ -6,7 +6,7 @@ pub(super) struct ErrorMessage {
     ui_props: UiProperties,
     text: Vec<String>,
     layouts: VecDeque<Vec<mltg::TextLayout>>,
-    current_line: u32,
+    current_line: usize,
 }
 
 impl ErrorMessage {
@@ -41,16 +41,17 @@ impl ErrorMessage {
     }
 
     pub fn offset(&mut self, size: mltg::Size, d: i32) -> Result<(), Error> {
+        let size = mltg::Size::new(size.width - self.ui_props.scroll_bar.width, size.height);
         let mut line = self.current_line;
         if d < 0 {
-            let d = d.abs() as u32;
+            let d = d.abs() as usize;
             if line <= d {
                 line = 0;
             } else {
                 line -= d;
             }
         } else {
-            line = (line + d as u32).min(self.text.len() as u32 - 1);
+            line = (line + d as usize).min(self.text.len() - 1);
         }
         if self.current_line == line {
             return Ok(());
@@ -118,6 +119,28 @@ impl ErrorMessage {
                 y += layout.size().height;
             }
         }
+        self.draw_scroll_bar(cmd, size);
+    }
+
+    fn draw_scroll_bar(&self, cmd: &mltg::DrawCommand, view_size: wita::LogicalSize<f32>) {
+        let props = &self.ui_props.scroll_bar;
+        let line_height = self.ui_props.line_height;
+        let bg_origin = [view_size.width - props.width, 0.0];
+        let bg_size = [props.width, view_size.height];
+        cmd.fill(&mltg::Rect::new(bg_origin, bg_size), &props.bg_color);
+        let a = self.text.len() as f32 + view_size.height / line_height - 1.0;
+        let thumb_origin = [
+            bg_origin[0],
+            self.current_line as f32 * view_size.height / a,
+        ];
+        let thumb_size = [
+            props.width,
+            view_size.height * view_size.height / line_height / a,
+        ];
+        cmd.fill(
+            &mltg::Rect::new(thumb_origin, thumb_size),
+            &props.thumb_color,
+        );
     }
 
     pub fn update(&mut self, size: mltg::Size) -> Result<(), Error> {

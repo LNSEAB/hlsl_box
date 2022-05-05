@@ -20,11 +20,20 @@ pub enum Method {
 }
 
 #[derive(Clone)]
+struct ScrollBarProperties {
+    width: f32,
+    bg_color: mltg::Brush,
+    thumb_color: mltg::Brush,
+}
+
+#[derive(Clone)]
 struct UiProperties {
     factory: mltg::Factory,
     text_format: mltg::TextFormat,
     text_color: mltg::Brush,
     bg_color: mltg::Brush,
+    scroll_bar: ScrollBarProperties,
+    line_height: f32,
 }
 
 struct Rendering {
@@ -115,11 +124,33 @@ impl Application {
         )?;
         let text_color = factory.create_solid_color_brush(settings.appearance.text_color)?;
         let bg_color = factory.create_solid_color_brush(settings.appearance.background_color)?;
+        let scroll_bar = {
+            let bg_color =
+                factory.create_solid_color_brush(settings.appearance.scroll_bar.bg_color)?;
+            let thumb_color =
+                factory.create_solid_color_brush(settings.appearance.scroll_bar.thumb_color)?;
+            ScrollBarProperties {
+                width: settings.appearance.scroll_bar.width,
+                bg_color,
+                thumb_color,
+            }
+        };
+        let line_height = {
+            let layout = factory.create_text_layout(
+                "A",
+                &text_format,
+                mltg::TextAlignment::Leading,
+                None,
+            )?;
+            layout.size().height
+        };
         let ui_props = UiProperties {
             factory,
             text_format,
             text_color,
             bg_color,
+            scroll_bar,
+            line_height,
         };
         let show_frame_counter = Rc::new(Cell::new(settings.frame_counter));
         let mut this = Self {
