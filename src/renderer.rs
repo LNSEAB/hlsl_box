@@ -251,7 +251,7 @@ impl Renderer {
         self.main_queue.execute([cmd_list])?;
         cmd_list.reset(&cmd_allocators[1])?;
         cmd_list.barrier([ui_buffer.enter()]);
-        cmd_list.layer(&ui_buffer, &back_buffer, &self.adjusted_plane);
+        cmd_list.layer(&ui_buffer, &back_buffer, &self.filling_plane);
         cmd_list.barrier([ps_result.leave(), back_buffer.leave(), ui_buffer.leave()]);
         cmd_list.close()?;
         let ui_signal = self.ui.render(index, r)?;
@@ -289,9 +289,9 @@ impl Renderer {
     pub fn maximize(&mut self, size: wita::PhysicalSize<u32>) -> Result<(), Error> {
         self.wait_all_signals();
         self.swap_chain.resize(&self.d3d12_device, size)?;
-        let size = size.cast::<f32>();
+        let size_f = size.cast::<f32>();
         let resolution = self.render_target.size().cast::<f32>();
-        let aspect_size = size.width / size.height;
+        let aspect_size = size_f.width / size_f.height;
         let aspect_resolution = resolution.width / resolution.height;
         let s = if aspect_resolution > aspect_size {
             [1.0, aspect_size / aspect_resolution]
@@ -303,8 +303,7 @@ impl Renderer {
             &self.copy_queue,
             &plane::Meshes::new(s[0], s[1]),
         )?;
-        let s = wita::PhysicalSize::new((size.width * s[0]) as u32, (size.height * s[1]) as u32);
-        self.ui.resize(&self.d3d12_device, s)?;
+        self.ui.resize(&self.d3d12_device, size)?;
         Ok(())
     }
 
