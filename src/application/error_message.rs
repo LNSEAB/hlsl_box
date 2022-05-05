@@ -25,7 +25,7 @@ impl ErrorMessage {
         window: wita::Window,
         e: &Error,
         ui_props: &UiProperties,
-        size: mltg::Size,
+        size: wita::LogicalSize<f32>,
     ) -> Result<Self, Error> {
         let text = format!("{}", e);
         let text = text.split('\n').map(|t| t.to_string()).collect::<Vec<_>>();
@@ -60,7 +60,7 @@ impl ErrorMessage {
         if d == 0 {
             return Ok(());
         }
-        let size = mltg::Size::new(size.width - self.ui_props.scroll_bar.width, size.height);
+        let size = wita::LogicalSize::new(size.width - self.ui_props.scroll_bar.width, size.height);
         let mut line = self.current_line;
         if d < 0 {
             let d = d.abs() as usize;
@@ -219,7 +219,7 @@ impl ErrorMessage {
         cmd.fill(&mltg::Rect::new(thumb_origin, thumb_size), &color);
     }
 
-    pub fn recreate(&mut self, size: mltg::Size) -> Result<(), Error> {
+    pub fn recreate(&mut self, size: wita::LogicalSize<f32>) -> Result<(), Error> {
         let mut height = 0.0;
         let mut index = self.current_line as usize;
         self.layouts.clear();
@@ -237,7 +237,7 @@ impl ErrorMessage {
         &self,
         v: &mut Vec<mltg::TextLayout>,
         text: &str,
-        size: mltg::Size,
+        size: wita::LogicalSize<f32>,
     ) -> Result<(), Error> {
         let layout = self.ui_props.factory.create_text_layout(
             text,
@@ -245,7 +245,10 @@ impl ErrorMessage {
             mltg::TextAlignment::Leading,
             None,
         )?;
-        let test = layout.hit_test(mltg::point(size.width, 0.0));
+        let test = layout.hit_test(mltg::point(
+            size.width - self.ui_props.scroll_bar.width,
+            0.0,
+        ));
         if !test.inside {
             v.push(layout);
             return Ok(());

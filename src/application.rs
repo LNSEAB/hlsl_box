@@ -285,7 +285,7 @@ impl Application {
                         let main_window = &self.window_receiver.main_window;
                         let dpi = main_window.dpi();
                         let size = main_window.inner_size().to_logical(dpi).cast::<f32>();
-                        e.recreate([size.width, size.height].into())?;
+                        e.recreate(size)?;
                     }
                 }
                 Some(WindowEvent::Restored(size)) => {
@@ -297,7 +297,7 @@ impl Application {
                         let main_window = &self.window_receiver.main_window;
                         let dpi = main_window.dpi();
                         let size = size.to_logical(dpi).cast::<f32>();
-                        e.recreate([size.width, size.height].into())?;
+                        e.recreate(size)?;
                     }
                 }
                 Some(WindowEvent::Minimized) => {
@@ -312,7 +312,7 @@ impl Application {
                         let main_window = &self.window_receiver.main_window;
                         let dpi = main_window.dpi();
                         let size = size.to_logical(dpi).cast::<f32>();
-                        e.recreate([size.width, size.height].into())?;
+                        e.recreate(size)?;
                     }
                 }
                 Some(WindowEvent::DpiChanged(dpi)) => {
