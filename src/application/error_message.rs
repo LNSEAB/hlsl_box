@@ -101,18 +101,17 @@ impl ErrorMessage {
                 height -= back.iter().fold(0.0, |h, l| h + l.size().height);
             }
         } else {
+            if d < self.layouts.len() as _ {
+                self.layouts.drain(..d as usize);
+            } else {
+                self.layouts.clear();
+            }
             let mut height = self
                 .layouts
                 .iter()
                 .flatten()
                 .fold(0.0, |h, l| h + l.size().height);
-            let d = line - self.current_line;
-            if d < self.layouts.len() {
-                self.layouts.drain(..d as usize);
-            } else {
-                self.layouts.clear();
-            }
-            let mut index = line as usize + self.layouts.len();
+            let mut index = line as usize + self.layouts.len() - 1;
             while index < self.text.len() && height < size.height {
                 let mut buffer = Vec::new();
                 self.create_text_layouts(&mut buffer, &self.text[index], size)?;
