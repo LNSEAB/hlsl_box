@@ -5,7 +5,7 @@ use std::path::Path;
 
 const DEFAULT_SETTINGS: &str = include_str!("default_settings.toml");
 
-#[derive(Clone, PartialEq, Eq, Debug, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug, serde::Serialize, serde::Deserialize)]
 #[serde(into = "[u32; 2]")]
 pub struct Version {
     pub major: u32,
@@ -33,7 +33,7 @@ pub struct Window {
     pub maximized: bool,
 }
 
-#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Copy, Debug, serde::Serialize, serde::Deserialize)]
 pub struct Resolution {
     pub width: u32,
     pub height: u32,

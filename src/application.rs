@@ -28,6 +28,25 @@ struct ScrollBarProperties {
     thumb_moving_color: mltg::Brush,
 }
 
+impl ScrollBarProperties {
+    fn new(settings: &Settings, factory: &mltg::Factory) -> Result<Self, Error> {
+        let bg_color = factory.create_solid_color_brush(settings.appearance.scroll_bar.bg_color)?;
+        let thumb_color =
+            factory.create_solid_color_brush(settings.appearance.scroll_bar.thumb_color)?;
+        let thumb_hover_color =
+            factory.create_solid_color_brush(settings.appearance.scroll_bar.thumb_hover_color)?;
+        let thumb_moving_color =
+            factory.create_solid_color_brush(settings.appearance.scroll_bar.thumb_moving_color)?;
+        Ok(Self {
+            width: settings.appearance.scroll_bar.width,
+            bg_color,
+            thumb_color,
+            thumb_hover_color,
+            thumb_moving_color,
+        })
+    }
+}
+
 #[derive(Clone)]
 struct UiProperties {
     factory: mltg::Factory,
@@ -36,6 +55,36 @@ struct UiProperties {
     bg_color: mltg::Brush,
     scroll_bar: ScrollBarProperties,
     line_height: f32,
+}
+
+impl UiProperties {
+    fn new(settings: &Settings, factory: &mltg::Factory) -> Result<Self, Error> {
+        let text_format = factory.create_text_format(
+            mltg::Font::System(&settings.appearance.font),
+            mltg::FontPoint(settings.appearance.font_size),
+            None,
+        )?;
+        let text_color = factory.create_solid_color_brush(settings.appearance.text_color)?;
+        let bg_color = factory.create_solid_color_brush(settings.appearance.background_color)?;
+        let line_height = {
+            let layout = factory.create_text_layout(
+                "A",
+                &text_format,
+                mltg::TextAlignment::Leading,
+                None,
+            )?;
+            layout.size().height
+        };
+        let scroll_bar = ScrollBarProperties::new(settings, factory)?;
+        Ok(Self {
+            factory: factory.clone(),
+            text_format,
+            text_color,
+            bg_color,
+            scroll_bar,
+            line_height,
+        })
+    }
 }
 
 struct Rendering {
@@ -70,22 +119,24 @@ impl RenderUi for State {
 }
 
 pub struct Application {
+    d3d12_device: ID3D12Device,
     settings: Settings,
     shader_model: hlsl::ShaderModel,
     compiler: hlsl::Compiler,
-    window_receiver: WindowReceiver,
+    window_manager: WindowManager,
     renderer: Renderer,
     clear_color: [f32; 4],
     mouse: [f32; 2],
     start_time: std::time::Instant,
-    dir_monitor: Option<DirMonitor>,
+    exe_dir_monitor: DirMonitor,
+    hlsl_dir_monitor: Option<DirMonitor>,
     state: State,
     ui_props: UiProperties,
     show_frame_counter: Rc<Cell<bool>>,
 }
 
 impl Application {
-    pub fn new(settings: Settings, window_receiver: WindowReceiver) -> Result<Self, Error> {
+    pub fn new(settings: Settings, window_manager: WindowManager) -> Result<Self, Error> {
         let compiler = hlsl::Compiler::new()?;
         let debug_layer = ENV_ARGS.debuglayer;
         if debug_layer {
@@ -112,65 +163,28 @@ impl Application {
         ];
         let renderer = Renderer::new(
             &d3d12_device,
-            &window_receiver.main_window,
-            settings.resolution.clone().into(),
+            &window_manager.main_window,
+            settings.resolution.into(),
             &compiler,
             shader_model,
             &clear_color,
         )?;
         let factory = renderer.mltg_factory();
-        let text_format = factory.create_text_format(
-            mltg::Font::System(&settings.appearance.font),
-            mltg::FontPoint(settings.appearance.font_size),
-            None,
-        )?;
-        let text_color = factory.create_solid_color_brush(settings.appearance.text_color)?;
-        let bg_color = factory.create_solid_color_brush(settings.appearance.background_color)?;
-        let scroll_bar = {
-            let bg_color =
-                factory.create_solid_color_brush(settings.appearance.scroll_bar.bg_color)?;
-            let thumb_color =
-                factory.create_solid_color_brush(settings.appearance.scroll_bar.thumb_color)?;
-            let thumb_hover_color = factory
-                .create_solid_color_brush(settings.appearance.scroll_bar.thumb_hover_color)?;
-            let thumb_moving_color = factory
-                .create_solid_color_brush(settings.appearance.scroll_bar.thumb_moving_color)?;
-            ScrollBarProperties {
-                width: settings.appearance.scroll_bar.width,
-                bg_color,
-                thumb_color,
-                thumb_hover_color,
-                thumb_moving_color,
-            }
-        };
-        let line_height = {
-            let layout = factory.create_text_layout(
-                "A",
-                &text_format,
-                mltg::TextAlignment::Leading,
-                None,
-            )?;
-            layout.size().height
-        };
-        let ui_props = UiProperties {
-            factory,
-            text_format,
-            text_color,
-            bg_color,
-            scroll_bar,
-            line_height,
-        };
+        let ui_props = UiProperties::new(&settings, &factory)?;
         let show_frame_counter = Rc::new(Cell::new(settings.frame_counter));
+        let exe_dir_monitor = DirMonitor::new(&*EXE_DIR_PATH)?;
         let mut this = Self {
             settings,
-            window_receiver,
+            d3d12_device,
+            window_manager,
             shader_model,
             compiler,
             renderer,
             clear_color,
             mouse: [0.0, 0.0],
             start_time: std::time::Instant::now(),
-            dir_monitor: None,
+            exe_dir_monitor,
+            hlsl_dir_monitor: None,
             state: State::Init,
             ui_props,
             show_frame_counter,
@@ -185,7 +199,7 @@ impl Application {
                 s.push_str(&format!("{}\n", i));
                 s
             });
-            this.set_error(&Path::new("./this_is_test"), Error::TestErrorMessage(msg))?;
+            this.set_error(Path::new("./this_is_test"), Error::TestErrorMessage(msg))?;
         }
         Ok(this)
     }
@@ -194,12 +208,12 @@ impl Application {
         assert!(path.is_file());
         let parent = path.parent().unwrap();
         let same_dir_monitor = self
-            .dir_monitor
+            .hlsl_dir_monitor
             .as_ref()
             .map_or(true, |d| d.path() != parent);
         if same_dir_monitor {
             debug!("load_file: DirMonitor::new: {}", parent.display());
-            self.dir_monitor = Some(DirMonitor::new(parent)?);
+            self.hlsl_dir_monitor = Some(DirMonitor::new(parent)?);
         }
         let blob = self.compiler.compile_from_file(
             path,
@@ -210,7 +224,7 @@ impl Application {
         let ps = self
             .renderer
             .create_pixel_shader_pipeline(&format!("{}", path.display()), &blob)?;
-        let resolution = self.settings.resolution.clone();
+        let resolution = self.settings.resolution;
         let parameters = pixel_shader::Parameters {
             resolution: [resolution.width as _, resolution.height as _],
             mouse: self.mouse,
@@ -225,7 +239,7 @@ impl Application {
             show_frame_counter: self.show_frame_counter.clone(),
         }));
         self.start_time = std::time::Instant::now();
-        self.window_receiver
+        self.window_manager
             .main_window
             .set_title(format!("{} {}", TITLE, path.display()));
         info!("load file: {}", path.display());
@@ -234,8 +248,14 @@ impl Application {
 
     pub fn run(&mut self) -> Result<(), Error> {
         loop {
-            let cursor_position = self.window_receiver.get_cursor_position();
-            match self.window_receiver.try_recv() {
+            if let Some(path) = self.exe_dir_monitor.try_recv() {
+                if path.as_path() == SETTINGS_PATH.as_path() {
+                    self.reload_settings()?;
+                    info!("reload settings.toml");
+                }
+            }
+            let cursor_position = self.window_manager.get_cursor_position();
+            match self.window_manager.try_recv() {
                 Some(WindowEvent::LoadFile(path)) => {
                     debug!("WindowEvent::LoadFile");
                     if let Err(e) = self.load_file(&path) {
@@ -267,7 +287,7 @@ impl Application {
                 Some(WindowEvent::MouseInput(button, state)) => {
                     debug!("WindowEvent::MouseInput");
                     if let State::Error(em) = &mut self.state {
-                        let main_window = &self.window_receiver.main_window;
+                        let main_window = &self.window_manager.main_window;
                         let dpi = main_window.dpi();
                         let size = main_window.inner_size().to_logical(dpi).cast::<f32>();
                         let mouse_pos = cursor_position.to_logical(dpi as _).cast::<f32>();
@@ -277,7 +297,7 @@ impl Application {
                 Some(WindowEvent::Wheel(d)) => {
                     debug!("WindowEvent::Wheel");
                     if let State::Error(em) = &mut self.state {
-                        let main_window = &self.window_receiver.main_window;
+                        let main_window = &self.window_manager.main_window;
                         let dpi = main_window.dpi();
                         let size = main_window.inner_size().to_logical(dpi).cast::<f32>();
                         em.offset(size, d)?;
@@ -289,10 +309,10 @@ impl Application {
                         error!("{}", e);
                     }
                     if let State::Error(e) = &mut self.state {
-                        let main_window = &self.window_receiver.main_window;
+                        let main_window = &self.window_manager.main_window;
                         let dpi = main_window.dpi();
                         let size = main_window.inner_size().to_logical(dpi).cast::<f32>();
-                        e.recreate(size)?;
+                        e.recreate_text(size)?;
                     }
                 }
                 Some(WindowEvent::Restored(size)) => {
@@ -301,10 +321,10 @@ impl Application {
                         error!("{}", e);
                     }
                     if let State::Error(e) = &mut self.state {
-                        let main_window = &self.window_receiver.main_window;
+                        let main_window = &self.window_manager.main_window;
                         let dpi = main_window.dpi();
                         let size = size.to_logical(dpi).cast::<f32>();
-                        e.recreate(size)?;
+                        e.recreate_text(size)?;
                     }
                 }
                 Some(WindowEvent::Minimized) => {
@@ -316,10 +336,10 @@ impl Application {
                         error!("{}", e);
                     }
                     if let State::Error(e) = &mut self.state {
-                        let main_window = &self.window_receiver.main_window;
+                        let main_window = &self.window_manager.main_window;
                         let dpi = main_window.dpi();
                         let size = size.to_logical(dpi).cast::<f32>();
-                        e.recreate(size)?;
+                        e.recreate_text(size)?;
                     }
                 }
                 Some(WindowEvent::DpiChanged(dpi)) => {
@@ -327,7 +347,7 @@ impl Application {
                     if let Err(e) = self.renderer.change_dpi(dpi) {
                         error!("{}", e);
                     }
-                    let size = self.window_receiver.main_window.inner_size();
+                    let size = self.window_manager.main_window.inner_size();
                     if let Err(e) = self.renderer.resize(size) {
                         error!("{}", e);
                     }
@@ -343,7 +363,7 @@ impl Application {
                 }
                 _ => {
                     if let State::Error(em) = &mut self.state {
-                        let main_window = &self.window_receiver.main_window;
+                        let main_window = &self.window_manager.main_window;
                         let dpi = main_window.dpi();
                         let size = main_window.inner_size().to_logical(dpi).cast::<f32>();
                         let mouse_pos = cursor_position.to_logical(dpi as _).cast::<f32>();
@@ -351,7 +371,11 @@ impl Application {
                     }
                 }
             }
-            if let Some(path) = self.dir_monitor.as_ref().and_then(|dir| dir.try_recv()) {
+            if let Some(path) = self
+                .hlsl_dir_monitor
+                .as_ref()
+                .and_then(|dir| dir.try_recv())
+            {
                 match &self.state {
                     State::Rendering(r) => {
                         if r.path == path {
@@ -372,7 +396,7 @@ impl Application {
             }
             if let State::Rendering(r) = &mut self.state {
                 r.parameters.mouse = {
-                    let size = self.window_receiver.main_window.inner_size().cast::<f32>();
+                    let size = self.window_manager.main_window.inner_size().cast::<f32>();
                     [
                         cursor_position.x as f32 / size.width,
                         cursor_position.y as f32 / size.height,
@@ -400,16 +424,16 @@ impl Application {
     }
 
     fn set_error(&mut self, path: &Path, e: Error) -> Result<(), Error> {
-        let dpi = self.window_receiver.main_window.dpi();
+        let dpi = self.window_manager.main_window.dpi();
         let size = self
-            .window_receiver
+            .window_manager
             .main_window
             .inner_size()
             .to_logical(dpi)
             .cast::<f32>();
         self.set_state(State::Error(ErrorMessage::new(
             path.to_path_buf(),
-            self.window_receiver.main_window.clone(),
+            self.window_manager.main_window.clone(),
             &e,
             &self.ui_props,
             [size.width, size.height].into(),
@@ -421,5 +445,51 @@ impl Application {
     fn set_state(&mut self, new_state: State) {
         self.renderer.wait_all_signals();
         self.state = new_state;
+    }
+
+    fn reload_settings(&mut self) -> Result<(), Error> {
+        let settings = Settings::load(&*SETTINGS_PATH)?;
+        let shader_model =
+            hlsl::ShaderModel::new(&self.d3d12_device, settings.shader.version.as_ref())?;
+        let clear_color = [
+            settings.appearance.clear_color[0],
+            settings.appearance.clear_color[1],
+            settings.appearance.clear_color[2],
+            0.0,
+        ];
+        let ui_props = UiProperties::new(&settings, &self.ui_props.factory)?;
+        self.renderer.recreate(
+            settings.resolution,
+            &self.compiler,
+            shader_model,
+            clear_color,
+        )?;
+        self.window_manager.update_resolution(settings.resolution);
+        let mut size = self.window_manager.main_window.inner_size();
+        if self.window_manager.main_window.is_maximized() {
+            self.renderer.maximize(size)?;
+        } else {
+            size.height = size.width * settings.resolution.height / settings.resolution.width;
+            self.window_manager.main_window.set_inner_size(size);
+            self.renderer.resize(size)?;
+        }
+        match &mut self.state {
+            State::Rendering(r) => {
+                r.parameters.resolution = [
+                    settings.resolution.width as f32,
+                    settings.resolution.height as f32,
+                ];
+            }
+            State::Error(em) => {
+                let dpi = self.window_manager.main_window.dpi();
+                let size = size.to_logical(dpi as _).cast::<f32>();
+                em.reset(size, &ui_props)?;
+            }
+            _ => {}
+        }
+        self.settings = settings;
+        self.ui_props = ui_props;
+        self.clear_color = clear_color;
+        Ok(())
     }
 }
