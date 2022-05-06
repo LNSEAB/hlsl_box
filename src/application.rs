@@ -180,6 +180,13 @@ impl Application {
                 this.set_error(path, e)?;
             }
         }
+        if ENV_ARGS.debug_error_msg {
+            let msg = (0..2000).fold(String::new(), |mut s, i| {
+                s.push_str(&format!("{}\n", i));
+                s
+            });
+            this.set_error(&Path::new("./this_is_test"), Error::TestErrorMessage(msg))?;
+        }
         Ok(this)
     }
 
@@ -264,7 +271,7 @@ impl Application {
                         let dpi = main_window.dpi();
                         let size = main_window.inner_size().to_logical(dpi).cast::<f32>();
                         let mouse_pos = cursor_position.to_logical(dpi as _).cast::<f32>();
-                        em.mouse_event(size, mouse_pos, Some((button, state)));
+                        em.mouse_event(size, mouse_pos, Some((button, state)))?;
                     }
                 }
                 Some(WindowEvent::Wheel(d)) => {
@@ -340,7 +347,7 @@ impl Application {
                         let dpi = main_window.dpi();
                         let size = main_window.inner_size().to_logical(dpi).cast::<f32>();
                         let mouse_pos = cursor_position.to_logical(dpi as _).cast::<f32>();
-                        em.mouse_event(size, mouse_pos, None);
+                        em.mouse_event(size, mouse_pos, None)?;
                     }
                 }
             }

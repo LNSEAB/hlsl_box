@@ -101,14 +101,17 @@ impl ErrorMessage {
                 height -= back.iter().fold(0.0, |h, l| h + l.size().height);
             }
         } else {
+            if d < self.layouts.len() as _ {
+                self.layouts.drain(..d as usize);
+            } else {
+                self.layouts.clear();
+            }
             let mut height = self
                 .layouts
                 .iter()
                 .flatten()
                 .fold(0.0, |h, l| h + l.size().height);
-            let d = line - self.current_line;
-            self.layouts.drain(..d as usize);
-            let mut index = line as usize + self.layouts.len();
+            let mut index = line as usize + self.layouts.len() - 1;
             while index < self.text.len() && height < size.height {
                 let mut buffer = Vec::new();
                 self.create_text_layouts(&mut buffer, &self.text[index], size)?;
@@ -126,7 +129,7 @@ impl ErrorMessage {
         view_size: wita::LogicalSize<f32>,
         mouse_pos: wita::LogicalPosition<f32>,
         button: Option<(wita::MouseButton, wita::KeyState)>,
-    ) {
+    ) -> Result<(), Error> {
         let props = &self.ui_props.scroll_bar;
         let line_height = self.ui_props.line_height;
         let x = view_size.width - props.width;
@@ -160,11 +163,11 @@ impl ErrorMessage {
                 }
             }
             ScrollBarState::Moving => {
-                let line = ((mouse_pos.y - self.dy) / (self.text.len() - 1) as f32)
+                let max_line = (self.text.len() - 1) as f32;
+                let line = ((mouse_pos.y - self.dy) * max_line / (view_size.height - thumb_size[1]))
                     .floor()
-                    .clamp(0.0, (self.text.len() - 1) as f32) as usize;
-                self.offset(view_size, line as i32 - self.current_line as i32)
-                    .unwrap();
+                    .clamp(0.0, max_line) as i32;
+                self.offset(view_size, line - self.current_line as i32)?;
                 if let Some((wita::MouseButton::Left, wita::KeyState::Released)) = button {
                     if thumb_rc.is_crossing(&mouse_pos) {
                         self.scroll_bar_state = ScrollBarState::Hover;
@@ -174,6 +177,7 @@ impl ErrorMessage {
                 }
             }
         }
+        Ok(())
     }
 
     pub fn draw(&self, cmd: &mltg::DrawCommand) {

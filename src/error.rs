@@ -64,6 +64,8 @@ pub enum Error {
     UnexceptedEof,
     #[error("{}", MESSAGES.unknown_error)]
     UnknownError,
+    #[error("{}", .0)]
+    TestErrorMessage(String),
 }
 
 impl From<IDxcBlobUtf8> for Error {
