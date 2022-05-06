@@ -160,10 +160,11 @@ impl ErrorMessage {
                 }
             }
             ScrollBarState::Moving => {
-                let line = ((mouse_pos.y - self.dy) / (self.text.len() - 1) as f32)
+                let max_line = (self.text.len() - 1) as f32;
+                let line = ((mouse_pos.y - self.dy) * max_line / (view_size.height - thumb_size[1]))
                     .floor()
-                    .clamp(0.0, (self.text.len() - 1) as f32) as usize;
-                self.offset(view_size, line as i32 - self.current_line as i32)
+                    .clamp(0.0, max_line) as i32;
+                self.offset(view_size, line - self.current_line as i32)
                     .unwrap();
                 if let Some((wita::MouseButton::Left, wita::KeyState::Released)) = button {
                     if thumb_rc.is_crossing(&mouse_pos) {

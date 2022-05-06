@@ -38,6 +38,18 @@
             "console": "integratedTerminal"
         },
         {
+            "name": "run debug with long error",
+            "type": "cppvsdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/target/debug/${workspaceFolderBasename}.exe",
+            "args": ["--debuglayer", "--nomodal", "${workspaceFolder}/src/window.rs"],
+            "stopAtEntry": false,
+            "cwd": "${workspaceFolder}",
+            "environment": [],
+            "preLaunchTask": "build debug",
+            "console": "integratedTerminal"
+        },
+        {
             "name": "run release",
             "type": "cppvsdbg",
             "request": "launch",
