@@ -42,7 +42,7 @@
             "type": "cppvsdbg",
             "request": "launch",
             "program": "${workspaceFolder}/target/debug/${workspaceFolderBasename}.exe",
-            "args": ["--debuglayer", "--nomodal", "${workspaceFolder}/src/window.rs"],
+            "args": ["--debuglayer", "--nomodal", "--debug-error-msg"],
             "stopAtEntry": false,
             "cwd": "${workspaceFolder}",
             "environment": [],

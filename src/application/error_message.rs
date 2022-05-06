@@ -107,7 +107,11 @@ impl ErrorMessage {
                 .flatten()
                 .fold(0.0, |h, l| h + l.size().height);
             let d = line - self.current_line;
-            self.layouts.drain(..d as usize);
+            if d < self.layouts.len() {
+                self.layouts.drain(..d as usize);
+            } else {
+                self.layouts.clear();
+            }
             let mut index = line as usize + self.layouts.len();
             while index < self.text.len() && height < size.height {
                 let mut buffer = Vec::new();
@@ -126,7 +130,7 @@ impl ErrorMessage {
         view_size: wita::LogicalSize<f32>,
         mouse_pos: wita::LogicalPosition<f32>,
         button: Option<(wita::MouseButton, wita::KeyState)>,
-    ) {
+    ) -> Result<(), Error> {
         let props = &self.ui_props.scroll_bar;
         let line_height = self.ui_props.line_height;
         let x = view_size.width - props.width;
@@ -164,8 +168,7 @@ impl ErrorMessage {
                 let line = ((mouse_pos.y - self.dy) * max_line / (view_size.height - thumb_size[1]))
                     .floor()
                     .clamp(0.0, max_line) as i32;
-                self.offset(view_size, line - self.current_line as i32)
-                    .unwrap();
+                self.offset(view_size, line - self.current_line as i32)?;
                 if let Some((wita::MouseButton::Left, wita::KeyState::Released)) = button {
                     if thumb_rc.is_crossing(&mouse_pos) {
                         self.scroll_bar_state = ScrollBarState::Hover;
@@ -175,6 +178,7 @@ impl ErrorMessage {
                 }
             }
         }
+        Ok(())
     }
 
     pub fn draw(&self, cmd: &mltg::DrawCommand) {

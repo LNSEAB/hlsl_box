@@ -36,6 +36,8 @@ struct EnvArgs {
     debuglayer: bool,
     #[clap(long)]
     nomodal: bool,
+    #[clap(long)]
+    debug_error_msg: bool,
     input_file: Option<String>,
 }
 
@@ -115,6 +117,7 @@ fn panic_handler(info: &std::panic::PanicInfo) {
             }
         }
     };
+    std::process::exit(1);
 }
 
 fn set_locale() {
@@ -126,7 +129,11 @@ fn set_locale() {
 
 fn main() {
     set_logger();
-    std::panic::set_hook(Box::new(panic_handler));
+    let default_handler = std::panic::take_hook();
+    std::panic::set_hook(Box::new(move |info| {
+        panic_handler(info);
+        default_handler(info);
+    }));
     info!("start");
     debug!("ENV_ARGS: {:?}", &*ENV_ARGS);
     set_locale();
@@ -151,9 +158,13 @@ fn main() {
             info!("start rendering thread");
             let _coinit = coinit::init(coinit::MULTITHREADED | coinit::DISABLE_OLE1DDE).unwrap();
             let main_window = window_receiver.main_window.clone();
+            let handler = std::panic::take_hook();
+            std::panic::set_hook(Box::new(move |info| {
+                handler(info);
+                main_window.close();
+            }));
             let app = Application::new(th_settings, window_receiver).and_then(|mut app| app.run());
             if let Err(e) = app {
-                main_window.close();
                 panic!("panic rendering thread: {}", e);
             }
             info!("end rendering thread");
