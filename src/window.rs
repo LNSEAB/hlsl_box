@@ -15,14 +15,15 @@ pub enum WindowEvent {
     Closed(settings::Window),
 }
 
-pub struct WindowReceiver {
+pub struct WindowManager {
     pub main_window: wita::Window,
     event: mpsc::Receiver<WindowEvent>,
     sync_event: mpsc::Receiver<WindowEvent>,
     cursor_position: Arc<Mutex<wita::PhysicalPosition<i32>>>,
+    resolution: Arc<Mutex<settings::Resolution>>,
 }
 
-impl WindowReceiver {
+impl WindowManager {
     pub fn try_recv(&self) -> Option<WindowEvent> {
         self.sync_event
             .try_recv()
@@ -32,6 +33,11 @@ impl WindowReceiver {
 
     pub fn get_cursor_position(&self) -> wita::PhysicalPosition<i32> {
         *self.cursor_position.lock().unwrap()
+    }
+
+    pub fn update_resolution(&self, resolution: settings::Resolution) {
+        let mut r = self.resolution.lock().unwrap();
+        *r = resolution;
     }
 }
 
@@ -100,8 +106,8 @@ impl PartialEq<Window> for wita::Window {
     }
 }
 
-pub struct WindowManager {
-    resolution: settings::Resolution,
+pub struct WindowHandler {
+    resolution: Arc<Mutex<settings::Resolution>>,
     main_window: Window,
     event: mpsc::Sender<WindowEvent>,
     sync_event: mpsc::SyncSender<WindowEvent>,
@@ -110,8 +116,8 @@ pub struct WindowManager {
     keys: Vec<wita::VirtualKey>,
 }
 
-impl WindowManager {
-    pub fn new(settings: &Settings, key_map: KeyboardMap) -> (Self, WindowReceiver) {
+impl WindowHandler {
+    pub fn new(settings: &Settings, key_map: KeyboardMap) -> (Self, WindowManager) {
         let main_window = wita::Window::builder()
             .title(TITLE)
             .position(wita::ScreenPosition::new(
@@ -120,7 +126,7 @@ impl WindowManager {
             ))
             .inner_size(wita::PhysicalSize::new(
                 settings.window.width,
-                settings.window.height,
+                settings.window.width * settings.resolution.height / settings.resolution.width,
             ))
             .accept_drag_files(true)
             .build()
@@ -131,9 +137,10 @@ impl WindowManager {
         let (tx, rx) = mpsc::channel();
         let (sync_tx, sync_rx) = mpsc::sync_channel(0);
         let cursor_position = Arc::new(Mutex::new(wita::PhysicalPosition::new(0, 0)));
+        let resolution = Arc::new(Mutex::new(settings.resolution));
         (
             Self {
-                resolution: settings.resolution.clone(),
+                resolution: resolution.clone(),
                 main_window: Window::new(main_window.clone()),
                 event: tx,
                 sync_event: sync_tx,
@@ -141,17 +148,18 @@ impl WindowManager {
                 key_map,
                 keys: Vec::with_capacity(5),
             },
-            WindowReceiver {
+            WindowManager {
                 main_window,
                 event: rx,
                 sync_event: sync_rx,
                 cursor_position,
+                resolution,
             },
         )
     }
 }
 
-impl wita::EventHandler for WindowManager {
+impl wita::EventHandler for WindowHandler {
     fn key_input(&mut self, ev: wita::event::KeyInput) {
         if ev.window == &self.main_window {
             if ev.state == wita::KeyState::Released {
@@ -217,7 +225,8 @@ impl wita::EventHandler for WindowManager {
 
     fn resizing(&mut self, ev: wita::event::Resizing) {
         if ev.window == &self.main_window {
-            ev.size.height = ev.size.width * self.resolution.height / self.resolution.width;
+            let resolution = self.resolution.lock().unwrap();
+            ev.size.height = ev.size.width * resolution.height / resolution.width;
         }
     }
 
@@ -231,7 +240,12 @@ impl wita::EventHandler for WindowManager {
 
     fn restored(&mut self, ev: wita::event::Restored) {
         if ev.window == &self.main_window {
-            self.event.send(WindowEvent::Restored(ev.size)).ok();
+            let resolution = self.resolution.lock().unwrap();
+            let mut size = ev.size;
+            size.height = size.width * resolution.height / resolution.width;
+            self.event.send(WindowEvent::Restored(size)).ok();
+            self.main_window.size = size;
+            self.main_window.window.set_inner_size(size);
             self.main_window.maximized = self.main_window.window.is_maximized();
             debug!("main_window restored");
         }

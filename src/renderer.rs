@@ -262,6 +262,10 @@ impl Renderer {
         Ok(())
     }
 
+    pub fn wait_all_signals(&self) {
+        self.signals.wait_all();
+    }
+
     pub fn resize(&mut self, size: wita::PhysicalSize<u32>) -> Result<(), Error> {
         self.wait_all_signals();
         self.swap_chain.resize(&self.d3d12_device, size)?;
@@ -307,8 +311,32 @@ impl Renderer {
         Ok(())
     }
 
-    pub fn wait_all_signals(&self) {
-        self.signals.wait_all();
+    pub fn recreate(
+        &mut self,
+        resolution: settings::Resolution,
+        compiler: &hlsl::Compiler,
+        shader_model: hlsl::ShaderModel,
+        clear_color: [f32; 4],
+    ) -> Result<(), Error> {
+        self.wait_all_signals();
+        let render_target = RenderTargetBuffers::new(
+            &self.d3d12_device,
+            wita::PhysicalSize::new(resolution.width, resolution.height),
+            Self::BUFFER_COUNT,
+            &clear_color,
+        )?;
+        let pixel_shader = PixelShader::new(&self.d3d12_device, compiler, shader_model)?;
+        let layer_shader = LayerShader::new(&self.d3d12_device, compiler, shader_model)?;
+        let cmd_list = CommandList::new(
+            "Renderer::cmd_list",
+            &self.d3d12_device,
+            &self.cmd_allocators[0],
+            layer_shader,
+        )?;
+        self.render_target = render_target;
+        self.pixel_shader = pixel_shader;
+        self.cmd_list = cmd_list;
+        Ok(())
     }
 }
 

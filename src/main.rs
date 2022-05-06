@@ -140,7 +140,7 @@ fn main() {
     let _coinit = coinit::init(coinit::APARTMENTTHREADED | coinit::DISABLE_OLE1DDE).unwrap();
     let th_handle = Rc::new(RefCell::new(None));
     let th_handle_f = th_handle.clone();
-    let f = move || -> Result<WindowManager, Error> {
+    let f = move || -> Result<WindowHandler, Error> {
         let settings = Settings::load(&*SETTINGS_PATH)?;
         debug!("settings: {:?}", settings);
         let mut key_map = KeyboardMap::new();
@@ -152,18 +152,18 @@ fn main() {
             vec![wita::VirtualKey::Ctrl, wita::VirtualKey::Char('F')],
             Method::FrameCounter,
         );
-        let (window, window_receiver) = WindowManager::new(&settings, key_map);
+        let (window, window_manager) = WindowHandler::new(&settings, key_map);
         let th_settings = settings;
         let th = std::thread::spawn(move || {
             info!("start rendering thread");
             let _coinit = coinit::init(coinit::MULTITHREADED | coinit::DISABLE_OLE1DDE).unwrap();
-            let main_window = window_receiver.main_window.clone();
+            let main_window = window_manager.main_window.clone();
             let handler = std::panic::take_hook();
             std::panic::set_hook(Box::new(move |info| {
                 handler(info);
                 main_window.close();
             }));
-            let app = Application::new(th_settings, window_receiver).and_then(|mut app| app.run());
+            let app = Application::new(th_settings, window_manager).and_then(|mut app| app.run());
             if let Err(e) = app {
                 panic!("panic rendering thread: {}", e);
             }
