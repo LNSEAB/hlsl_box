@@ -227,7 +227,7 @@ impl ErrorMessage {
         cmd.fill(&mltg::Rect::new(thumb_origin, thumb_size), color);
     }
 
-    pub fn recreate(&mut self, size: wita::LogicalSize<f32>) -> Result<(), Error> {
+    pub fn recreate_text(&mut self, size: wita::LogicalSize<f32>) -> Result<(), Error> {
         let mut height = 0.0;
         let mut index = self.current_line as usize;
         self.layouts.clear();
@@ -239,6 +239,11 @@ impl ErrorMessage {
             index += 1;
         }
         Ok(())
+    }
+
+    pub fn reset(&mut self, size: wita::LogicalSize<f32>, ui_props: &UiProperties) -> Result<(), Error> {
+        self.ui_props = ui_props.clone();
+        self.recreate_text(size)
     }
 
     fn create_text_layouts(
