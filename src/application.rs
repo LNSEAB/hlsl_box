@@ -312,7 +312,7 @@ impl Application {
                         let main_window = &self.window_manager.main_window;
                         let dpi = main_window.dpi();
                         let size = main_window.inner_size().to_logical(dpi).cast::<f32>();
-                        e.recreate(size)?;
+                        e.recreate_text(size)?;
                     }
                 }
                 Some(WindowEvent::Restored(size)) => {
@@ -324,7 +324,7 @@ impl Application {
                         let main_window = &self.window_manager.main_window;
                         let dpi = main_window.dpi();
                         let size = size.to_logical(dpi).cast::<f32>();
-                        e.recreate(size)?;
+                        e.recreate_text(size)?;
                     }
                 }
                 Some(WindowEvent::Minimized) => {
@@ -339,7 +339,7 @@ impl Application {
                         let main_window = &self.window_manager.main_window;
                         let dpi = main_window.dpi();
                         let size = size.to_logical(dpi).cast::<f32>();
-                        e.recreate(size)?;
+                        e.recreate_text(size)?;
                     }
                 }
                 Some(WindowEvent::DpiChanged(dpi)) => {
@@ -473,11 +473,19 @@ impl Application {
             self.window_manager.main_window.set_inner_size(size);
             self.renderer.resize(size)?;
         }
-        if let State::Rendering(r) = &mut self.state {
-            r.parameters.resolution = [
-                settings.resolution.width as f32,
-                settings.resolution.height as f32,
-            ];
+        match &mut self.state {
+            State::Rendering(r) => {
+                r.parameters.resolution = [
+                    settings.resolution.width as f32,
+                    settings.resolution.height as f32,
+                ];
+            }
+            State::Error(em) => {
+                let dpi = self.window_manager.main_window.dpi();
+                let size = size.to_logical(dpi as _).cast::<f32>();
+                em.reset(size, &ui_props)?;
+            }
+            _ => {}
         }
         self.settings = settings;
         self.ui_props = ui_props;
