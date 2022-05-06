@@ -17,7 +17,7 @@ vs_args = []
 ps_args = []
 
 [appearance]
-clear_color = [0.0, 0.0, 0.3]
+clear_color = [0.1, 0.1, 0.1]
 font = "Yu Gothic UI"
 font_size = 12.0
 text_color = [1.0, 1.0, 1.0, 1.0]
