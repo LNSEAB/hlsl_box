@@ -164,7 +164,7 @@ impl Application {
         let renderer = Renderer::new(
             &d3d12_device,
             &window_manager.main_window,
-            settings.resolution.clone().into(),
+            settings.resolution.into(),
             &compiler,
             shader_model,
             &clear_color,
@@ -224,7 +224,7 @@ impl Application {
         let ps = self
             .renderer
             .create_pixel_shader_pipeline(&format!("{}", path.display()), &blob)?;
-        let resolution = self.settings.resolution.clone();
+        let resolution = self.settings.resolution;
         let parameters = pixel_shader::Parameters {
             resolution: [resolution.width as _, resolution.height as _],
             mouse: self.mouse,
