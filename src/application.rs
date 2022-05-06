@@ -30,14 +30,13 @@ struct ScrollBarProperties {
 
 impl ScrollBarProperties {
     fn new(settings: &Settings, factory: &mltg::Factory) -> Result<Self, Error> {
-        let bg_color =
-            factory.create_solid_color_brush(settings.appearance.scroll_bar.bg_color)?;
+        let bg_color = factory.create_solid_color_brush(settings.appearance.scroll_bar.bg_color)?;
         let thumb_color =
             factory.create_solid_color_brush(settings.appearance.scroll_bar.thumb_color)?;
-        let thumb_hover_color = factory
-            .create_solid_color_brush(settings.appearance.scroll_bar.thumb_hover_color)?;
-        let thumb_moving_color = factory
-            .create_solid_color_brush(settings.appearance.scroll_bar.thumb_moving_color)?;
+        let thumb_hover_color =
+            factory.create_solid_color_brush(settings.appearance.scroll_bar.thumb_hover_color)?;
+        let thumb_moving_color =
+            factory.create_solid_color_brush(settings.appearance.scroll_bar.thumb_moving_color)?;
         Ok(Self {
             width: settings.appearance.scroll_bar.width,
             bg_color,
@@ -450,7 +449,8 @@ impl Application {
 
     fn reload_settings(&mut self) -> Result<(), Error> {
         let settings = Settings::load(&*SETTINGS_PATH)?;
-        let shader_model = hlsl::ShaderModel::new(&self.d3d12_device, settings.shader.version.as_ref())?;
+        let shader_model =
+            hlsl::ShaderModel::new(&self.d3d12_device, settings.shader.version.as_ref())?;
         let clear_color = [
             settings.appearance.clear_color[0],
             settings.appearance.clear_color[1],
@@ -458,9 +458,21 @@ impl Application {
             0.0,
         ];
         let ui_props = UiProperties::new(&settings, &self.ui_props.factory)?;
-        self.renderer.recreate(settings.resolution, &self.compiler, shader_model, clear_color)?;
+        self.renderer.recreate(
+            settings.resolution,
+            &self.compiler,
+            shader_model,
+            clear_color,
+        )?;
         self.window_manager.update_resolution(settings.resolution);
-        
+        let mut size = self.window_manager.main_window.inner_size();
+        if self.window_manager.main_window.is_maximized() {
+            self.renderer.maximize(size)?;
+        } else {
+            size.height = size.width * settings.resolution.height / settings.resolution.width;
+            self.window_manager.main_window.set_inner_size(size);
+            self.renderer.resize(size)?;
+        }
         if let State::Rendering(r) = &mut self.state {
             r.parameters.resolution = [
                 settings.resolution.width as f32,
@@ -470,14 +482,6 @@ impl Application {
         self.settings = settings;
         self.ui_props = ui_props;
         self.clear_color = clear_color;
-        let mut size = self.window_manager.main_window.inner_size();
-        if self.window_manager.main_window.is_maximized() {
-            self.renderer.maximize(size)?;
-        } else {
-            size.height = size.width * self.settings.resolution.height / self.settings.resolution.width;
-            self.window_manager.main_window.set_inner_size(size);
-            self.renderer.resize(size)?;
-        }
         Ok(())
     }
 }
