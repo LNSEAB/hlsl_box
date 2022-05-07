@@ -226,7 +226,14 @@ impl wita::EventHandler for WindowHandler {
     fn resizing(&mut self, ev: wita::event::Resizing) {
         if ev.window == &self.main_window {
             let resolution = self.resolution.lock().unwrap();
-            ev.size.height = ev.size.width * resolution.height / resolution.width;
+            match ev.edge {
+                wita::ResizingEdge::Top | wita::ResizingEdge::Bottom => {
+                    ev.size.width = ev.size.height * resolution.width / resolution.height;
+                }
+                _ => {
+                    ev.size.height = ev.size.width * resolution.height / resolution.width;
+                }
+            }
         }
     }
 
