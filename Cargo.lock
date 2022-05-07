@@ -629,9 +629,9 @@ checksum = "c811ca4a8c853ef420abd8592ba53ddbbac90410fab6903b3e79972a631f7680"
 
 [[package]]
 name = "wita"
-version = "0.15.4"
+version = "0.16.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8b7bdab46ecb5b6bd5fd81111e32a1160dfd5d175a4d3738b8110d0347e0a9fb"
+checksum = "37c791e3b4f9969f3d36ad9b01e846ed01f1a83de9fcd977aac1d602699b3aee"
 dependencies = [
  "log",
  "num",
