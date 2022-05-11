@@ -162,7 +162,7 @@ impl PixelShader {
     {
         unsafe {
             let data = self.parameters.map().unwrap();
-            data.copy(parameters);
+            std::ptr::copy_nonoverlapping(parameters, data.as_mut(), 1);
         }
         State {
             root_signature: &self.root_signature,

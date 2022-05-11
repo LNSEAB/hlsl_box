@@ -124,8 +124,12 @@ impl<'a, T> MappedBuffer<'a, T> {
         }
     }
 
-    pub unsafe fn copy(&self, src: &T) {
-        std::ptr::copy_nonoverlapping(src, self.ptr, 1);
+    pub unsafe fn as_ref(&self) -> &'a T {
+        self.ptr.as_ref().unwrap()
+    }
+
+    pub unsafe fn as_mut(&self) -> &'a mut T {
+        self.ptr.as_mut().unwrap()
     }
 }
 

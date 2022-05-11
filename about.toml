@@ -2,4 +2,5 @@ accepted = [
     "Apache-2.0",
     "MIT",
     "Zlib",
+    "BSD-3-Clause",
 ]

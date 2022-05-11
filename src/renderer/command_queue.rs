@@ -55,6 +55,20 @@ impl Signals {
             }
         }
     }
+
+    pub fn last_frame_index(&self) -> Option<usize> {
+        self.signals
+            .borrow()
+            .iter()
+            .enumerate()
+            .fold((None, 0), |(r, value), (index, signal)| {
+                signal
+                    .as_ref()
+                    .and_then(|s| (s.value > value).then(|| (Some(index), s.value)))
+                    .unwrap_or((r, value))
+            })
+            .0
+    }
 }
 
 pub(super) struct CommandQueue {
@@ -96,9 +110,12 @@ impl CommandQueue {
         }
     }
 
-    pub fn execute<const N: usize>(&self, cmd_lists: [&CommandList; N]) -> Result<Signal, Error> {
+    pub fn execute<const N: usize>(
+        &self,
+        cmd_lists: [&impl CommandList; N],
+    ) -> Result<Signal, Error> {
         unsafe {
-            let lists = cmd_lists.map(|l| Some(l.into()));
+            let lists = cmd_lists.map(|l| Some(l.handle()));
             self.queue.ExecuteCommandLists(&lists);
             self.signal()
         }

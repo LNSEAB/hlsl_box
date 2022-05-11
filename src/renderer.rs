@@ -3,6 +3,7 @@ mod command_queue;
 mod layer_shader;
 pub mod pixel_shader;
 mod plane;
+mod read_back_buffer;
 mod render_target;
 mod swap_chain;
 mod ui;
@@ -21,6 +22,7 @@ use command_queue::*;
 use layer_shader::*;
 pub use pixel_shader::Pipeline;
 use pixel_shader::PixelShader;
+use read_back_buffer::*;
 use render_target::*;
 use swap_chain::*;
 pub use ui::RenderUi;
@@ -42,6 +44,12 @@ trait Source {
 
 trait Shader {
     fn record(&self, cmd_list: &ID3D12GraphicsCommandList);
+}
+
+trait CopySource {
+    fn enter(&self) -> TransitionBarrier;
+    fn leave(&self) -> TransitionBarrier;
+    fn record(&self, cmd_lsit: &ID3D12GraphicsCommandList, dest: &ReadBackBuffer);
 }
 
 pub struct RenderTarget {
@@ -93,6 +101,69 @@ impl Target for RenderTarget {
     }
 }
 
+pub struct CopyResource {
+    resource: ID3D12Resource,
+}
+
+impl CopySource for CopyResource {
+    fn enter(&self) -> TransitionBarrier {
+        TransitionBarrier {
+            resource: self.resource.clone(),
+            subresource: 0,
+            state_before: D3D12_RESOURCE_STATE_COMMON,
+            state_after: D3D12_RESOURCE_STATE_COPY_SOURCE,
+        }
+    }
+
+    fn leave(&self) -> TransitionBarrier {
+        TransitionBarrier {
+            resource: self.resource.clone(),
+            subresource: 0,
+            state_before: D3D12_RESOURCE_STATE_COPY_SOURCE,
+            state_after: D3D12_RESOURCE_STATE_COMMON,
+        }
+    }
+
+    fn record(&self, cmd_list: &ID3D12GraphicsCommandList, dest: &ReadBackBuffer) {
+        unsafe {
+            let device = {
+                let mut device: Option<ID3D12Device> = None;
+                cmd_list
+                    .GetDevice(&mut device)
+                    .map(|_| device.unwrap())
+                    .unwrap()
+            };
+            let desc = self.resource.GetDesc();
+            let mut foot_print = D3D12_PLACED_SUBRESOURCE_FOOTPRINT::default();
+            device.GetCopyableFootprints(
+                &desc,
+                0,
+                1,
+                0,
+                &mut foot_print,
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+            );
+            let copy_src = D3D12_TEXTURE_COPY_LOCATION {
+                Type: D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX,
+                pResource: Some(self.resource.clone()),
+                Anonymous: D3D12_TEXTURE_COPY_LOCATION_0 {
+                    SubresourceIndex: 0,
+                },
+            };
+            let copy_dest = D3D12_TEXTURE_COPY_LOCATION {
+                Type: D3D12_TEXTURE_COPY_TYPE_PLACED_FOOTPRINT,
+                pResource: Some(dest.resource().clone()),
+                Anonymous: D3D12_TEXTURE_COPY_LOCATION_0 {
+                    PlacedFootprint: foot_print,
+                },
+            };
+            cmd_list.CopyTextureRegion(&copy_dest, 0, 0, 0, &copy_src, std::ptr::null());
+        }
+    }
+}
+
 pub struct ShaderResource {
     resource: ID3D12Resource,
     heap: ID3D12DescriptorHeap,
@@ -132,18 +203,20 @@ pub struct Renderer {
     render_target: RenderTargetBuffers,
     pixel_shader: PixelShader,
     cmd_allocators: Vec<ID3D12CommandAllocator>,
-    cmd_list: CommandList,
+    cmd_list: GraphicsCommandList,
     signals: Signals,
     ui: Ui,
     copy_queue: CommandQueue,
     main_queue: PresentableQueue,
     filling_plane: plane::Buffer,
     adjusted_plane: plane::Buffer,
+    read_back_buffer: ReadBackBuffer,
 }
 
 impl Renderer {
     const ALLOCATORS_PER_FRAME: usize = 2;
     const BUFFER_COUNT: usize = 2;
+    const COPY_ALLOCATOR: usize = Self::ALLOCATORS_PER_FRAME * Self::BUFFER_COUNT;
 
     pub fn new(
         d3d12_device: &ID3D12Device,
@@ -164,6 +237,11 @@ impl Renderer {
                 cmd_allocator.SetName(format!("Renderer::cmd_allocators[{}]", i))?;
                 cmd_allocators.push(cmd_allocator);
             }
+            cmd_allocators.push(d3d12_device.CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_COPY)?);
+            cmd_allocators[Self::COPY_ALLOCATOR].SetName(format!(
+                "Renderer::cmd_allocators[{}]",
+                Self::COPY_ALLOCATOR
+            ))?;
             let copy_queue = CommandQueue::new(
                 "Renderer::copy_queue",
                 d3d12_device,
@@ -180,12 +258,14 @@ impl Renderer {
             let filling_plane = plane::Buffer::new(d3d12_device, &copy_queue)?;
             let adjusted_plane = plane::Buffer::new(d3d12_device, &copy_queue)?;
             let layer_shader = LayerShader::new(d3d12_device, compiler, shader_model)?;
-            let cmd_list = CommandList::new(
+            let cmd_list = GraphicsCommandList::new(
                 "Renderer::cmd_list",
                 d3d12_device,
                 &cmd_allocators[0],
                 layer_shader,
             )?;
+            let signals = Signals::new(cmd_allocators.len());
+            let read_back_buffer = ReadBackBuffer::new(d3d12_device, resolution)?;
             Ok(Self {
                 d3d12_device: d3d12_device.clone(),
                 swap_chain,
@@ -193,12 +273,13 @@ impl Renderer {
                 pixel_shader,
                 cmd_allocators,
                 cmd_list,
-                signals: Signals::new(2),
+                signals,
                 ui,
                 copy_queue,
                 main_queue: presentable_queue,
                 filling_plane,
                 adjusted_plane,
+                read_back_buffer,
             })
         }
     }
@@ -266,6 +347,34 @@ impl Renderer {
         self.signals.wait_all();
     }
 
+    pub fn screen_shot(&self) -> anyhow::Result<Option<image::RgbaImage>> {
+        let index = self.signals.last_frame_index();
+        if index.is_none() {
+            return Ok(None);
+        }
+        let index = index.unwrap();
+        let cmd_list = CopyCommandList::new(
+            "Renderer::screen_shot",
+            &self.d3d12_device,
+            &self.cmd_allocators[Self::COPY_ALLOCATOR],
+        )?;
+        let src = self.render_target.copy_resource(index);
+        cmd_list.reset(&self.cmd_allocators[Self::COPY_ALLOCATOR])?;
+        cmd_list.barrier([src.enter()]);
+        cmd_list.copy(&src, &self.read_back_buffer);
+        cmd_list.barrier([src.leave()]);
+        cmd_list.close()?;
+        let signal = self.copy_queue.execute([&cmd_list])?;
+        if !signal.is_completed() {
+            let event = Event::new()?;
+            signal.set_event(&event)?;
+            event.wait();
+        }
+        self.signals.wait(index);
+        let img = self.read_back_buffer.to_image()?;
+        Ok(Some(img))
+    }
+
     pub fn resize(&mut self, size: wita::PhysicalSize<u32>) -> Result<(), Error> {
         self.wait_all_signals();
         self.swap_chain.resize(&self.d3d12_device, size)?;
@@ -327,7 +436,7 @@ impl Renderer {
         )?;
         let pixel_shader = PixelShader::new(&self.d3d12_device, compiler, shader_model)?;
         let layer_shader = LayerShader::new(&self.d3d12_device, compiler, shader_model)?;
-        let cmd_list = CommandList::new(
+        let cmd_list = GraphicsCommandList::new(
             "Renderer::cmd_list",
             &self.d3d12_device,
             &self.cmd_allocators[0],
