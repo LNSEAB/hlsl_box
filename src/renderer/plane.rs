@@ -114,7 +114,7 @@ impl Buffer {
                 )?;
                 {
                     let data = uploader.map()?;
-                    data.copy(plane);
+                    std::ptr::copy_nonoverlapping(plane, data.as_mut(), 1);
                 }
                 uploader
             };

@@ -111,4 +111,10 @@ impl RenderTargetBuffers {
             }
         }
     }
+
+    pub fn copy_resource(&self, index: usize) -> CopyResource {
+        CopyResource {
+            resource: self.buffers[index].handle().clone(),
+        }
+    }
 }

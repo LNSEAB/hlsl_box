@@ -1,11 +1,15 @@
 use super::*;
 
-pub(super) struct CommandList {
+pub trait CommandList {
+    fn handle(&self) -> ID3D12CommandList;
+}
+
+pub(super) struct GraphicsCommandList {
     cmd_list: ID3D12GraphicsCommandList,
     layer_shader: LayerShader,
 }
 
-impl CommandList {
+impl GraphicsCommandList {
     pub fn new(
         name: &str,
         device: &ID3D12Device,
@@ -72,14 +76,55 @@ impl CommandList {
     }
 }
 
-impl From<CommandList> for ID3D12CommandList {
-    fn from(src: CommandList) -> ID3D12CommandList {
-        src.cmd_list.cast().unwrap()
+impl CommandList for GraphicsCommandList {
+    fn handle(&self) -> ID3D12CommandList {
+        self.cmd_list.cast().unwrap()
     }
 }
 
-impl From<&CommandList> for ID3D12CommandList {
-    fn from(src: &CommandList) -> ID3D12CommandList {
-        src.cmd_list.cast().unwrap()
+pub(super) struct CopyCommandList(ID3D12GraphicsCommandList);
+
+impl CopyCommandList {
+    pub fn new(
+        name: &str,
+        device: &ID3D12Device,
+        allocator: &ID3D12CommandAllocator,
+    ) -> Result<Self, Error> {
+        unsafe {
+            let cmd_list: ID3D12GraphicsCommandList =
+                device.CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_COPY, allocator, None)?;
+            cmd_list.SetName(name)?;
+            cmd_list.Close()?;
+            Ok(Self(cmd_list))
+        }
+    }
+
+    pub fn reset(&self, allocator: &ID3D12CommandAllocator) -> Result<(), Error> {
+        unsafe {
+            allocator.Reset()?;
+            self.0.Reset(allocator, None)?;
+            Ok(())
+        }
+    }
+
+    pub fn barrier<const N: usize>(&self, barriers: [TransitionBarrier; N]) {
+        transition_barriers(&self.0, barriers);
+    }
+
+    pub fn copy(&self, src: &impl CopySource, dest: &ReadBackBuffer) {
+        src.record(&self.0, dest);
+    }
+
+    pub fn close(&self) -> Result<(), Error> {
+        unsafe {
+            self.0.Close()?;
+            Ok(())
+        }
+    }
+}
+
+impl CommandList for CopyCommandList {
+    fn handle(&self) -> ID3D12CommandList {
+        self.0.cast().unwrap()
     }
 }

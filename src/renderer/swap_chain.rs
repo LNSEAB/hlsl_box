@@ -13,7 +13,10 @@ impl PresentableQueue {
         }
     }
 
-    pub fn execute<const N: usize>(&self, cmd_lists: [&CommandList; N]) -> Result<Signal, Error> {
+    pub fn execute<const N: usize>(
+        &self,
+        cmd_lists: [&impl CommandList; N],
+    ) -> Result<Signal, Error> {
         self.queue.execute(cmd_lists)
     }
 

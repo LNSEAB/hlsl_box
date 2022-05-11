@@ -2,6 +2,7 @@ mod error_message;
 mod frame_counter;
 
 use crate::*;
+use std::sync::mpsc;
 use std::{
     cell::Cell,
     collections::VecDeque,
@@ -17,6 +18,7 @@ use frame_counter::*;
 pub enum Method {
     OpenDialog,
     FrameCounter,
+    ScreenShot,
 }
 
 #[derive(Clone)]
@@ -118,6 +120,85 @@ impl RenderUi for State {
     }
 }
 
+struct ScreenShot {
+    date: chrono::Date<chrono::Local>,
+    count: u64,
+    th: Option<std::thread::JoinHandle<()>>,
+    tx: Option<mpsc::Sender<(image::RgbaImage, PathBuf)>>,
+}
+
+impl ScreenShot {
+    fn new() -> Self {
+        let date = chrono::Local::today();
+        let date_str = format!("{}", date);
+        let read_dir = |dir: std::fs::ReadDir| {
+            dir.flatten()
+                .filter_map(|entry| {
+                    entry
+                        .file_name()
+                        .to_str()
+                        .filter(|name| name.starts_with(&date_str))
+                        .and_then(|name| name.split('-').last().and_then(|l| l.parse::<u64>().ok()))
+                })
+                .max()
+        };
+        let count = SCREEN_SHOT_PATH
+            .read_dir()
+            .ok()
+            .and_then(read_dir)
+            .unwrap_or(1);
+        let (tx, rx) = mpsc::channel::<(image::RgbaImage, PathBuf)>();
+        let th = std::thread::spawn(move || {
+            while let Ok((img, path)) = rx.recv() {
+                match img.save(&path) {
+                    Ok(_) => info!("save screen shot: {}", path.display()),
+                    Err(e) => error!("save screen shot: {}", e),
+                }
+            }
+        });
+        Self {
+            date,
+            count,
+            th: Some(th),
+            tx: Some(tx),
+        }
+    }
+
+    fn save(&mut self, renderer: &Renderer) -> anyhow::Result<()> {
+        if !SCREEN_SHOT_PATH.is_dir() {
+            std::fs::create_dir(&*SCREEN_SHOT_PATH).unwrap();
+        }
+        let img = renderer.screen_shot()?;
+        if img.is_none() {
+            return Ok(());
+        }
+        let img = img.unwrap();
+        let date = chrono::Local::today();
+        if date != self.date {
+            self.date = date;
+            self.count = 1;
+        }
+        let path = loop {
+            let file_name = format!("{}-{}.png", date.format("%Y-%m-%d"), self.count);
+            let path = SCREEN_SHOT_PATH.join(file_name);
+            if !path.is_file() {
+                break path;
+            }
+            self.count += 1;
+        };
+        self.tx.as_ref().unwrap().send((img, path)).ok();
+        self.count += 1;
+        Ok(())
+    }
+}
+
+impl Drop for ScreenShot {
+    fn drop(&mut self) {
+        std::mem::drop(self.tx.take().unwrap());
+        self.th.take().unwrap().join().unwrap_or(());
+    }
+}
+
 pub struct Application {
     d3d12_device: ID3D12Device,
     settings: Settings,
@@ -133,10 +214,11 @@ pub struct Application {
     state: State,
     ui_props: UiProperties,
     show_frame_counter: Rc<Cell<bool>>,
+    screen_shot: ScreenShot,
 }
 
 impl Application {
-    pub fn new(settings: Settings, window_manager: WindowManager) -> Result<Self, Error> {
+    pub fn new(settings: Settings, window_manager: WindowManager) -> anyhow::Result<Self> {
         let compiler = hlsl::Compiler::new()?;
         let debug_layer = ENV_ARGS.debuglayer;
         if debug_layer {
@@ -173,6 +255,7 @@ impl Application {
         let ui_props = UiProperties::new(&settings, &factory)?;
         let show_frame_counter = Rc::new(Cell::new(settings.frame_counter));
         let exe_dir_monitor = DirMonitor::new(&*EXE_DIR_PATH)?;
+        let screen_shot = ScreenShot::new();
         let mut this = Self {
             settings,
             d3d12_device,
@@ -188,6 +271,7 @@ impl Application {
             state: State::Init,
             ui_props,
             show_frame_counter,
+            screen_shot,
         };
         if let Some(path) = ENV_ARGS.input_file.as_ref().map(Path::new) {
             if let Err(e) = this.load_file(path) {
@@ -246,7 +330,7 @@ impl Application {
         Ok(())
     }
 
-    pub fn run(&mut self) -> Result<(), Error> {
+    pub fn run(&mut self) -> anyhow::Result<()> {
         loop {
             if let Some(path) = self.exe_dir_monitor.try_recv() {
                 if path.as_path() == SETTINGS_PATH.as_path() {
@@ -281,6 +365,9 @@ impl Application {
                         }
                         Method::FrameCounter => {
                             self.show_frame_counter.set(!self.show_frame_counter.get());
+                        }
+                        Method::ScreenShot => {
+                            self.screen_shot.save(&self.renderer)?;
                         }
                     }
                 }

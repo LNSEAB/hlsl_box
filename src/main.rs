@@ -55,6 +55,7 @@ static EXE_DIR_PATH: Lazy<std::path::PathBuf> = Lazy::new(|| {
 });
 
 static SETTINGS_PATH: Lazy<std::path::PathBuf> = Lazy::new(|| EXE_DIR_PATH.join("settings.toml"));
+static SCREEN_SHOT_PATH: Lazy<std::path::PathBuf> = Lazy::new(|| EXE_DIR_PATH.join("screenshot"));
 
 fn set_logger() {
     use std::fs::File;
@@ -152,6 +153,7 @@ fn main() {
             vec![wita::VirtualKey::Ctrl, wita::VirtualKey::Char('F')],
             Method::FrameCounter,
         );
+        key_map.insert(vec![wita::VirtualKey::PrintScreen], Method::ScreenShot);
         let (window, window_manager) = WindowHandler::new(&settings, key_map);
         let th_settings = settings;
         let th = std::thread::spawn(move || {
@@ -165,7 +167,7 @@ fn main() {
             }));
             let app = Application::new(th_settings, window_manager).and_then(|mut app| app.run());
             if let Err(e) = app {
-                panic!("panic rendering thread: {}", e);
+                panic!("panic rendering thread: {}\n{}", e, e.backtrace());
             }
             info!("end rendering thread");
         });
