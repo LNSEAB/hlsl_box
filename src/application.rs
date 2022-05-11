@@ -2,6 +2,7 @@ mod error_message;
 mod frame_counter;
 
 use crate::*;
+use std::sync::mpsc;
 use std::{
     cell::Cell,
     collections::VecDeque,
@@ -122,6 +123,8 @@ impl RenderUi for State {
 struct ScreenShot {
     date: chrono::Date<chrono::Local>,
     count: u64,
+    th: Option<std::thread::JoinHandle<()>>,
+    tx: Option<mpsc::Sender<(image::RgbaImage, PathBuf)>>,
 }
 
 impl ScreenShot {
@@ -144,7 +147,21 @@ impl ScreenShot {
             .ok()
             .and_then(read_dir)
             .unwrap_or(1);
-        Self { date, count }
+        let (tx, rx) = mpsc::channel::<(image::RgbaImage, PathBuf)>();
+        let th = std::thread::spawn(move || {
+            while let Ok((img, path)) = rx.recv() {
+                match img.save(&path) {
+                    Ok(_) => info!("save screen shot: {}", path.display()),
+                    Err(e) => error!("save screen shot: {}", e),
+                }
+            }
+        });
+        Self {
+            date,
+            count,
+            th: Some(th),
+            tx: Some(tx),
+        }
     }
 
     fn save(&mut self, renderer: &Renderer) -> anyhow::Result<()> {
@@ -169,14 +186,16 @@ impl ScreenShot {
             }
             self.count += 1;
         };
-        std::thread::spawn(move || {
-            match img.save(&path) {
-                Ok(_) => info!("save screen shot: {}", path.display()),
-                Err(e) => error!("save screen shot: {}", e),
-            }
-        });
+        self.tx.as_ref().unwrap().send((img, path)).ok();
         self.count += 1;
         Ok(())
+    }
+}
+
+impl Drop for ScreenShot {
+    fn drop(&mut self) {
+        std::mem::drop(self.tx.take().unwrap());
+        self.th.take().unwrap().join().unwrap_or(());
     }
 }
 
