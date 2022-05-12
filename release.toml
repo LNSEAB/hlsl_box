@@ -1,5 +1,0 @@
-dev-version = false
-publish = false
-pre-release-commit-message = "Version {{version}}"
-tag-message = "Version {{version}}"
-tag-name = "{{version}}"

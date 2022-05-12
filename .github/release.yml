@@ -8,7 +8,12 @@ changelog:
         - bug
     - title: その他
       labels:
-        - "*"
+        - etc
+        - documentation
+    - title: 廃止
+      labels:
+        - duplicate
   exclude:
     labels:
       - ignore-for-release
+      - refactoring
