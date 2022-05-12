@@ -60,6 +60,18 @@
             "environment": [],
             "preLaunchTask": "build release",
             "console": "integratedTerminal"
+        },
+        {
+            "name": "run production",
+            "type": "cppvsdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/package/hlsl_box/${workspaceFolderBasename}.exe",
+            "args": ["--debuglayer"],
+            "stopAtEntry": false,
+            "cwd": "${workspaceFolder}",
+            "environment": [],
+            "preLaunchTask": "package",
+            "console": "integratedTerminal"
         }
     ]
 }

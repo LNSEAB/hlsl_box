@@ -20,6 +20,21 @@
 				"$rustc"
 			],
 			"group": "build"
+		},
+		{
+			"label": "package",
+			"type": "shell",
+			"options": {
+				"shell": {
+					"executable": "powershell.exe",
+					"args": ["-NoLogo"]
+				}
+			},
+			"command": "${workspaceFolder}/package.ps1",
+			"problemMatcher": [
+				"$rustc"
+			],
+			"group": "build"
 		}
 	]
 }
