@@ -314,27 +314,27 @@ impl Renderer {
         let back_buffer = self.swap_chain.back_buffer(index);
         let ui_buffer = self.ui.source(index);
         let cmd_list = &self.cmd_list;
-        cmd_list.reset(&cmd_allocators[0])?;
-        if let Some(ps) = ps {
-            if let Some(parameters) = parameters {
-                let shader = self.pixel_shader.apply(ps, parameters);
-                let target = self.render_target.target(index);
-                cmd_list.barrier([target.enter()]);
-                cmd_list.clear(&target, clear_color);
-                cmd_list.draw(&shader, &target, &self.filling_plane);
-                cmd_list.barrier([target.leave()]);
+        cmd_list.record(&cmd_allocators[0], |cmd| {
+            if let Some(ps) = ps {
+                if let Some(parameters) = parameters {
+                    let shader = self.pixel_shader.apply(ps, parameters);
+                    let target = self.render_target.target(index);
+                    cmd.barrier([target.enter()]);
+                    cmd.clear(&target, clear_color);
+                    cmd.draw(&shader, &target, &self.filling_plane);
+                    cmd.barrier([target.leave()]);
+                }
             }
-        }
-        cmd_list.barrier([ps_result.enter(), back_buffer.enter()]);
-        cmd_list.clear(&back_buffer, clear_color);
-        cmd_list.layer(&ps_result, &back_buffer, &self.adjusted_plane);
-        cmd_list.close()?;
+            cmd.barrier([ps_result.enter(), back_buffer.enter()]);
+            cmd.clear(&back_buffer, clear_color);
+            cmd.layer(&ps_result, &back_buffer, &self.adjusted_plane);
+        })?;
         self.main_queue.execute([cmd_list])?;
-        cmd_list.reset(&cmd_allocators[1])?;
-        cmd_list.barrier([ui_buffer.enter()]);
-        cmd_list.layer(&ui_buffer, &back_buffer, &self.filling_plane);
-        cmd_list.barrier([ps_result.leave(), back_buffer.leave(), ui_buffer.leave()]);
-        cmd_list.close()?;
+        cmd_list.record(&cmd_allocators[1], |cmd| {
+            cmd.barrier([ui_buffer.enter()]);
+            cmd.layer(&ui_buffer, &back_buffer, &self.filling_plane);
+            cmd.barrier([ps_result.leave(), back_buffer.leave(), ui_buffer.leave()]);
+        })?;
         let ui_signal = self.ui.render(index, r)?;
         self.main_queue.wait(&ui_signal)?;
         self.main_queue.execute([cmd_list])?;
@@ -359,11 +359,11 @@ impl Renderer {
             &self.cmd_allocators[Self::COPY_ALLOCATOR],
         )?;
         let src = self.render_target.copy_resource(index);
-        cmd_list.reset(&self.cmd_allocators[Self::COPY_ALLOCATOR])?;
-        cmd_list.barrier([src.enter()]);
-        cmd_list.copy(&src, &self.read_back_buffer);
-        cmd_list.barrier([src.leave()]);
-        cmd_list.close()?;
+        cmd_list.record(&self.cmd_allocators[Self::COPY_ALLOCATOR], |cmd| {
+            cmd.barrier([src.enter()]);
+            cmd.copy(&src, &self.read_back_buffer);
+            cmd.barrier([src.leave()]);
+        })?;
         self.copy_queue.execute([&cmd_list])?.wait()?;
         let img = self.read_back_buffer.to_image()?;
         Ok(Some(img))

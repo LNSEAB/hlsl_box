@@ -148,7 +148,9 @@ impl Buffer {
                 }],
             );
             cmd_list.Close()?;
-            copy_queue.execute_command_lists(&[Some(cmd_list.cast()?)])?.wait()?;
+            copy_queue
+                .execute_command_lists(&[Some(cmd_list.cast()?)])?
+                .wait()?;
             Ok(())
         }
     }
