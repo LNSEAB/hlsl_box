@@ -364,13 +364,7 @@ impl Renderer {
         cmd_list.copy(&src, &self.read_back_buffer);
         cmd_list.barrier([src.leave()]);
         cmd_list.close()?;
-        let signal = self.copy_queue.execute([&cmd_list])?;
-        if !signal.is_completed() {
-            let event = Event::new()?;
-            signal.set_event(&event)?;
-            event.wait();
-        }
-        self.signals.wait(index);
+        self.copy_queue.execute([&cmd_list])?.wait()?;
         let img = self.read_back_buffer.to_image()?;
         Ok(Some(img))
     }
