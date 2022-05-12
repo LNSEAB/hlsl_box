@@ -76,7 +76,7 @@ ConstantBuffer<Parameters> HLSLBox: register(b0);
 
 ## 依存関係のライセンス一覧
 
-[license.html](license.html)
+同梱のlicense.htmlをご覧ください。
 
 -----------------------------------------------------------------------------------------
 
