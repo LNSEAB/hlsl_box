@@ -4,6 +4,44 @@ pub trait CommandList {
     fn handle(&self) -> ID3D12CommandList;
 }
 
+pub(super) struct GraphicsCommand<'a>(&'a GraphicsCommandList);
+
+impl<'a> GraphicsCommand<'a> {
+    pub fn barrier<const N: usize>(&self, barriers: [TransitionBarrier; N]) {
+        transition_barriers(&self.0.cmd_list, barriers);
+    }
+
+    pub fn clear(&self, target: &impl Target, clear_color: [f32; 4]) {
+        target.clear(&self.0.cmd_list, clear_color);
+    }
+
+    pub fn layer(&self, src: &impl Source, dest: &impl Target, plane: &plane::Buffer) {
+        self.0.layer_shader.record(&self.0.cmd_list);
+        src.record(&self.0.cmd_list);
+        dest.record(&self.0.cmd_list);
+        self.draw_plane(plane);
+    }
+
+    pub fn draw(&self, shader: &impl Shader, target: &impl Target, plane: &plane::Buffer) {
+        shader.record(&self.0.cmd_list);
+        target.record(&self.0.cmd_list);
+        self.draw_plane(plane);
+    }
+
+    fn draw_plane(&self, plane: &plane::Buffer) {
+        unsafe {
+            self.0
+                .cmd_list
+                .IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+            self.0.cmd_list.IASetVertexBuffers(0, &[plane.vbv]);
+            self.0.cmd_list.IASetIndexBuffer(&plane.ibv);
+            self.0
+                .cmd_list
+                .DrawIndexedInstanced(plane.indices_len() as _, 1, 0, 0, 0);
+        }
+    }
+}
+
 pub(super) struct GraphicsCommandList {
     cmd_list: ID3D12GraphicsCommandList,
     layer_shader: LayerShader,
@@ -28,57 +66,38 @@ impl GraphicsCommandList {
         }
     }
 
-    pub fn reset(&self, allocator: &ID3D12CommandAllocator) -> Result<(), Error> {
+    pub fn record(
+        &self,
+        allocator: &ID3D12CommandAllocator,
+        f: impl FnOnce(GraphicsCommand),
+    ) -> Result<(), Error> {
         unsafe {
             allocator.Reset()?;
             self.cmd_list.Reset(allocator, None)?;
-            Ok(())
         }
-    }
-
-    pub fn barrier<const N: usize>(&self, barriers: [TransitionBarrier; N]) {
-        transition_barriers(&self.cmd_list, barriers);
-    }
-
-    pub fn clear(&self, target: &impl Target, clear_color: [f32; 4]) {
-        target.clear(&self.cmd_list, clear_color);
-    }
-
-    pub fn layer(&self, src: &impl Source, dest: &impl Target, plane: &plane::Buffer) {
-        self.layer_shader.record(&self.cmd_list);
-        src.record(&self.cmd_list);
-        dest.record(&self.cmd_list);
-        self.draw_plane(plane);
-    }
-
-    pub fn draw(&self, shader: &impl Shader, target: &impl Target, plane: &plane::Buffer) {
-        shader.record(&self.cmd_list);
-        target.record(&self.cmd_list);
-        self.draw_plane(plane);
-    }
-
-    pub fn close(&self) -> Result<(), Error> {
+        f(GraphicsCommand(self));
         unsafe {
             self.cmd_list.Close()?;
-            Ok(())
         }
-    }
-
-    fn draw_plane(&self, plane: &plane::Buffer) {
-        unsafe {
-            self.cmd_list
-                .IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
-            self.cmd_list.IASetVertexBuffers(0, &[plane.vbv]);
-            self.cmd_list.IASetIndexBuffer(&plane.ibv);
-            self.cmd_list
-                .DrawIndexedInstanced(plane.indices_len() as _, 1, 0, 0, 0);
-        }
+        Ok(())
     }
 }
 
 impl CommandList for GraphicsCommandList {
     fn handle(&self) -> ID3D12CommandList {
         self.cmd_list.cast().unwrap()
+    }
+}
+
+pub(super) struct CopyCommand<'a>(&'a CopyCommandList);
+
+impl<'a> CopyCommand<'a> {
+    pub fn barrier<const N: usize>(&self, barriers: [TransitionBarrier; N]) {
+        transition_barriers(&self.0 .0, barriers);
+    }
+
+    pub fn copy(&self, src: &impl CopySource, dest: &ReadBackBuffer) {
+        src.record(&self.0 .0, dest);
     }
 }
 
@@ -99,27 +118,20 @@ impl CopyCommandList {
         }
     }
 
-    pub fn reset(&self, allocator: &ID3D12CommandAllocator) -> Result<(), Error> {
+    pub fn record(
+        &self,
+        allocator: &ID3D12CommandAllocator,
+        f: impl FnOnce(CopyCommand),
+    ) -> Result<(), Error> {
         unsafe {
             allocator.Reset()?;
             self.0.Reset(allocator, None)?;
-            Ok(())
         }
-    }
-
-    pub fn barrier<const N: usize>(&self, barriers: [TransitionBarrier; N]) {
-        transition_barriers(&self.0, barriers);
-    }
-
-    pub fn copy(&self, src: &impl CopySource, dest: &ReadBackBuffer) {
-        src.record(&self.0, dest);
-    }
-
-    pub fn close(&self) -> Result<(), Error> {
+        f(CopyCommand(self));
         unsafe {
             self.0.Close()?;
-            Ok(())
         }
+        Ok(())
     }
 }
 

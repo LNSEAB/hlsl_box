@@ -148,12 +148,9 @@ impl Buffer {
                 }],
             );
             cmd_list.Close()?;
-            let signal = copy_queue.execute_command_lists(&[Some(cmd_list.cast()?)])?;
-            if !signal.is_completed() {
-                let event = Event::new()?;
-                signal.set_event(&event)?;
-                event.wait();
-            }
+            copy_queue
+                .execute_command_lists(&[Some(cmd_list.cast()?)])?
+                .wait()?;
             Ok(())
         }
     }

@@ -11,12 +11,21 @@ impl Signal {
         unsafe { self.fence.GetCompletedValue() >= self.value }
     }
 
-    pub fn set_event(&self, event: &Event) -> Result<(), Error> {
+    fn set_event(&self, event: &Event) -> Result<(), Error> {
         unsafe {
             self.fence
                 .SetEventOnCompletion(self.value, event.handle())?;
             Ok(())
         }
+    }
+
+    pub fn wait(&self) -> Result<(), Error> {
+        if !self.is_completed() {
+            let event = Event::new()?;
+            self.set_event(&event)?;
+            event.wait();
+        }
+        Ok(())
     }
 }
 
