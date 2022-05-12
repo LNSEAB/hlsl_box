@@ -127,7 +127,7 @@ impl CopyCommandList {
             allocator.Reset()?;
             self.0.Reset(allocator, None)?;
         }
-        f(CopyCommand(&self));
+        f(CopyCommand(self));
         unsafe {
             self.0.Close()?;
         }
