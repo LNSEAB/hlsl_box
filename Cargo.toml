@@ -42,6 +42,9 @@ features = [
     "Win32_Globalization",
 ]
 
+[profile.dev.package."*"]
+opt-level = 2
+
 [profile.production]
 inherits = "release"
 lto = "fat"
