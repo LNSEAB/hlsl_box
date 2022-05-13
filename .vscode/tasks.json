@@ -4,8 +4,13 @@
 		{
 			"label": "build debug",
 			"type": "shell",
-			"command": "cargo",
-			"args": ["build"],
+			"command": "${workspaceFolder}/script/build.ps1",
+			"options": {
+				"shell": {
+					"executable": "pwsh.exe",
+					"args": ["-NoLogo"]
+				}
+			},
 			"problemMatcher": [
 				"$rustc"
 			],
@@ -14,8 +19,14 @@
 		{
 			"label": "build release",
 			"type": "shell",
-			"command": "cargo",
-			"args": ["build", "--release"],
+			"command": "${workspaceFolder}/script/build.ps1",
+			"args": ["release"],
+			"options": {
+				"shell": {
+					"executable": "pwsh.exe",
+					"args": ["-NoLogo"]
+				}
+			},
 			"problemMatcher": [
 				"$rustc"
 			],
@@ -26,14 +37,27 @@
 			"type": "shell",
 			"options": {
 				"shell": {
-					"executable": "powershell.exe",
+					"executable": "pwsh.exe",
 					"args": ["-NoLogo"]
 				}
 			},
-			"command": "${workspaceFolder}/package.ps1",
+			"command": "${workspaceFolder}/script/package.ps1",
 			"problemMatcher": [
 				"$rustc"
 			],
+			"group": "build"
+		},
+		{
+			"label": "dxc",
+			"type": "shell",
+			"command": "${workspaceFolder}/script/dxc.ps1",
+			"args": ["--update"],
+			"options": {
+				"shell": {
+					"executable": "pwsh.exe",
+					"args": ["-NoLogo"]
+				}
+			},
 			"group": "build"
 		}
 	]

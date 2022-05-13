@@ -12,7 +12,7 @@ changelog:
         - documentation
     - title: 廃止
       labels:
-        - duplicate
+        - obsolete
   exclude:
     labels:
       - ignore-for-release
