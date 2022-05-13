@@ -1,11 +1,12 @@
 use super::*;
 
 pub trait RenderUi {
-    fn render(&self, cmd: &mltg::DrawCommand);
+    fn render(&self, cmd: &mltg::DrawCommand, size: wita::LogicalSize<f32>);
 }
 
 pub struct Ui {
     context: mltg::Context<mltg::Direct3D12>,
+    window: wita::Window,
     cmd_queue: CommandQueue,
     desc_heap: ID3D12DescriptorHeap,
     desc_size: usize,
@@ -44,6 +45,7 @@ impl Ui {
             let signals = Signals::new(count);
             Ok(Self {
                 context,
+                window: window.clone(),
                 cmd_queue,
                 desc_heap,
                 desc_size,
@@ -55,9 +57,10 @@ impl Ui {
 
     pub fn render(&self, index: usize, r: &impl RenderUi) -> Result<Signal, Error> {
         let buffer = &self.buffers[index];
+        let size = self.window.inner_size().to_logical(self.window.dpi() as _).cast::<f32>();
         self.context.draw(&buffer.1, |cmd| {
             cmd.clear([0.0, 0.0, 0.0, 0.0]);
-            r.render(cmd);
+            r.render(cmd, size);
         })?;
         let signal = self.cmd_queue.signal()?;
         self.signals.set(index, signal.clone());

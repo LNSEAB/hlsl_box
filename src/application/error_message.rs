@@ -10,7 +10,6 @@ enum ScrollBarState {
 
 pub(super) struct ErrorMessage {
     path: PathBuf,
-    window: wita::Window,
     ui_props: UiProperties,
     text: Vec<String>,
     layouts: VecDeque<Vec<mltg::TextLayout>>,
@@ -22,7 +21,6 @@ pub(super) struct ErrorMessage {
 impl ErrorMessage {
     pub fn new(
         path: PathBuf,
-        window: wita::Window,
         e: &Error,
         ui_props: &UiProperties,
         size: wita::LogicalSize<f32>,
@@ -32,7 +30,6 @@ impl ErrorMessage {
         let layouts = VecDeque::new();
         let mut this = Self {
             path,
-            window,
             ui_props: ui_props.clone(),
             text,
             layouts,
@@ -181,12 +178,7 @@ impl ErrorMessage {
         Ok(())
     }
 
-    pub fn draw(&self, cmd: &mltg::DrawCommand) {
-        let size = self
-            .window
-            .inner_size()
-            .to_logical(self.window.dpi())
-            .cast::<f32>();
+    pub fn draw(&self, cmd: &mltg::DrawCommand, size: wita::LogicalSize<f32>) {
         cmd.fill(
             &mltg::Rect::new([0.0, 0.0], [size.width, size.height]),
             &self.ui_props.bg_color,

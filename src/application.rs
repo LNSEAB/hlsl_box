@@ -104,7 +104,7 @@ enum State {
 }
 
 impl RenderUi for State {
-    fn render(&self, cmd: &mltg::DrawCommand) {
+    fn render(&self, cmd: &mltg::DrawCommand, size: wita::LogicalSize<f32>) {
         match &self {
             State::Init => {}
             State::Rendering(r) => {
@@ -114,7 +114,7 @@ impl RenderUi for State {
                 }
             }
             State::Error(e) => {
-                e.draw(cmd);
+                e.draw(cmd, size);
             }
         }
     }
@@ -520,7 +520,6 @@ impl Application {
             .cast::<f32>();
         self.set_state(State::Error(ErrorMessage::new(
             path.to_path_buf(),
-            self.window_manager.main_window.clone(),
             &e,
             &self.ui_props,
             [size.width, size.height].into(),
