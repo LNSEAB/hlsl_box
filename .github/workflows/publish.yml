@@ -28,7 +28,7 @@ jobs:
         uses: actions-rs/cargo@v1
         with:
           command: test
-          args: --profile production --target x86_64-pc-windows-msvc
+          args: --profile production
       - name: Build
         shell: pwsh
         run: ./script/package.ps1

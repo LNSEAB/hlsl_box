@@ -11,8 +11,6 @@ if ($args.Contains("release")) {
 } else {
     $target_dir = "$root/../target/debug"
     cargo.exe build
-    Copy-Item "$dxc_bin/dxcompiler.dll" "$target_dir/deps"
-    Copy-Item "$dxc_bin/dxil.dll" "$target_dir/deps"
 }
 Copy-Item "$dxc_bin/dxcompiler.dll" $target_dir
 Copy-Item "$dxc_bin/dxil.dll" $target_dir
