@@ -33,6 +33,9 @@ jobs:
         uses: actions-rs/cargo@v1
         with:
           command: clippy
+      - name: Build
+        shell: pwsh
+        run: ./script/build.ps1
       - name: Test
         uses: actions-rs/cargo@v1
         with:
