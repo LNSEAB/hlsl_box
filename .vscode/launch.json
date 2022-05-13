@@ -65,7 +65,7 @@
             "name": "run production",
             "type": "cppvsdbg",
             "request": "launch",
-            "program": "${workspaceFolder}/package/hlsl_box/${workspaceFolderBasename}.exe",
+            "program": "${workspaceFolder}/target/package/hlsl_box/${workspaceFolderBasename}.exe",
             "args": ["--debuglayer"],
             "stopAtEntry": false,
             "cwd": "${workspaceFolder}",
