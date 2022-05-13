@@ -23,7 +23,7 @@ impl ErrorMessage {
         path: PathBuf,
         e: &Error,
         ui_props: &UiProperties,
-        size: wita::LogicalSize<f32>,
+        view_size: wita::LogicalSize<f32>,
     ) -> Result<Self, Error> {
         let text = format!("{}", e);
         let text = text.split('\n').map(|t| t.to_string()).collect::<Vec<_>>();
@@ -39,9 +39,9 @@ impl ErrorMessage {
         };
         let mut index = 0;
         let mut height = 0.0;
-        while index < this.text.len() && height < size.height {
+        while index < this.text.len() && height < view_size.height {
             let mut buffer = Vec::new();
-            this.create_text_layouts(&mut buffer, &this.text[index], size)?;
+            this.create_text_layouts(&mut buffer, &this.text[index], view_size)?;
             height += buffer.iter().fold(0.0, |h, l| h + l.size().height);
             this.layouts.push_back(buffer);
             index += 1;
@@ -53,11 +53,11 @@ impl ErrorMessage {
         &self.path
     }
 
-    pub fn offset(&mut self, size: wita::LogicalSize<f32>, d: i32) -> Result<(), Error> {
+    pub fn offset(&mut self, view_size: wita::LogicalSize<f32>, d: i32) -> Result<(), Error> {
         if d == 0 {
             return Ok(());
         }
-        let size = wita::LogicalSize::new(size.width - self.ui_props.scroll_bar.width, size.height);
+        let size = wita::LogicalSize::new(view_size.width - self.ui_props.scroll_bar.width, view_size.height);
         let mut line = self.current_line;
         if d < 0 {
             let d = d.abs() as usize;
@@ -123,9 +123,9 @@ impl ErrorMessage {
 
     pub fn mouse_event(
         &mut self,
-        view_size: wita::LogicalSize<f32>,
         mouse_pos: wita::LogicalPosition<f32>,
         button: Option<(wita::MouseButton, wita::KeyState)>,
+        view_size: wita::LogicalSize<f32>,
     ) -> Result<(), Error> {
         let props = &self.ui_props.scroll_bar;
         let line_height = self.ui_props.line_height;
@@ -178,9 +178,9 @@ impl ErrorMessage {
         Ok(())
     }
 
-    pub fn draw(&self, cmd: &mltg::DrawCommand, size: wita::LogicalSize<f32>) {
+    pub fn draw(&self, cmd: &mltg::DrawCommand, view_size: wita::LogicalSize<f32>) {
         cmd.fill(
-            &mltg::Rect::new([0.0, 0.0], [size.width, size.height]),
+            &mltg::Rect::new([0.0, 0.0], [view_size.width, view_size.height]),
             &self.ui_props.bg_color,
         );
         let mut y = 0.0;
@@ -190,7 +190,7 @@ impl ErrorMessage {
                 y += layout.size().height;
             }
         }
-        self.draw_scroll_bar(cmd, size);
+        self.draw_scroll_bar(cmd, view_size);
     }
 
     fn draw_scroll_bar(&self, cmd: &mltg::DrawCommand, view_size: wita::LogicalSize<f32>) {
@@ -216,13 +216,13 @@ impl ErrorMessage {
         cmd.fill(&mltg::Rect::new(thumb_origin, thumb_size), color);
     }
 
-    pub fn recreate_text(&mut self, size: wita::LogicalSize<f32>) -> Result<(), Error> {
+    pub fn recreate_text(&mut self, view_size: wita::LogicalSize<f32>) -> Result<(), Error> {
         let mut height = 0.0;
         let mut index = self.current_line as usize;
         self.layouts.clear();
-        while index < self.text.len() && height < size.height {
+        while index < self.text.len() && height < view_size.height {
             let mut buffer = Vec::new();
-            self.create_text_layouts(&mut buffer, &self.text[index], size)?;
+            self.create_text_layouts(&mut buffer, &self.text[index], view_size)?;
             height += buffer.iter().fold(0.0, |h, l| h + l.size().height);
             self.layouts.push_back(buffer);
             index += 1;
@@ -232,18 +232,18 @@ impl ErrorMessage {
 
     pub fn reset(
         &mut self,
-        size: wita::LogicalSize<f32>,
         ui_props: &UiProperties,
+        view_size: wita::LogicalSize<f32>,
     ) -> Result<(), Error> {
         self.ui_props = ui_props.clone();
-        self.recreate_text(size)
+        self.recreate_text(view_size)
     }
 
     fn create_text_layouts(
         &self,
         v: &mut Vec<mltg::TextLayout>,
         text: &str,
-        size: wita::LogicalSize<f32>,
+        view_size: wita::LogicalSize<f32>,
     ) -> Result<(), Error> {
         let layout = self.ui_props.factory.create_text_layout(
             text,
@@ -252,7 +252,7 @@ impl ErrorMessage {
             None,
         )?;
         let test = layout.hit_test(mltg::point(
-            size.width - self.ui_props.scroll_bar.width,
+            view_size.width - self.ui_props.scroll_bar.width,
             0.0,
         ));
         if !test.inside {
@@ -282,6 +282,6 @@ impl ErrorMessage {
             None,
         )?;
         v.push(layout);
-        self.create_text_layouts(v, &cs.iter().skip(pos + 1).collect::<String>(), size)
+        self.create_text_layouts(v, &cs.iter().skip(pos + 1).collect::<String>(), view_size)
     }
 }
