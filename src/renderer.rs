@@ -527,6 +527,10 @@ mod tests {
         copy_queue.execute([&copy_list]).unwrap().wait().unwrap();
         let ret = read_back_buffer.to_image().unwrap();
         let img = image::open("test_resource/fill.png").unwrap().to_rgba8();
-        assert!(ret.pixels().zip(img.pixels()).all(|(a, b)| a == b));
+        assert!(ret.iter().zip(img.iter()).all(|(a, b)| {
+            let a = *a as i16;
+            let b = *b as i16;
+            (a - b).abs() <= 1
+        }));
     }
 }
