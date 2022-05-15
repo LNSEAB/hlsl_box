@@ -181,6 +181,13 @@ impl Buffer {
         }
     }
 
+    pub fn size(&self) -> u64 {
+        unsafe {
+            let desc = self.0.GetDesc();
+            desc.Width
+        }
+    }
+
     pub fn gpu_virtual_address(&self) -> u64 {
         unsafe { self.0.GetGPUVirtualAddress() }
     }

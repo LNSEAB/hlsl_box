@@ -94,8 +94,26 @@ trait CopySource: Resource {
             state_after: D3D12_RESOURCE_STATE_COMMON,
         }
     }
+}
 
-    fn record(&self, cmd_list: &ID3D12GraphicsCommandList, dest: &ReadBackBuffer);
+trait CopyDest: Resource {
+    fn enter(&self) -> TransitionBarrier {
+        TransitionBarrier {
+            resource: self.resource().clone(),
+            subresource: 0,
+            state_before: D3D12_RESOURCE_STATE_COMMON,
+            state_after: D3D12_RESOURCE_STATE_COPY_DEST,
+        }
+    }
+
+    fn leave(&self) -> TransitionBarrier {
+        TransitionBarrier {
+            resource: self.resource().clone(),
+            subresource: 0,
+            state_before: D3D12_RESOURCE_STATE_COPY_DEST,
+            state_after: D3D12_RESOURCE_STATE_COMMON,
+        }
+    }
 }
 
 pub struct RenderTarget {
@@ -145,46 +163,7 @@ impl Resource for CopyResource {
     }
 }
 
-impl CopySource for CopyResource {
-    fn record(&self, cmd_list: &ID3D12GraphicsCommandList, dest: &ReadBackBuffer) {
-        unsafe {
-            let device = {
-                let mut device: Option<ID3D12Device> = None;
-                cmd_list
-                    .GetDevice(&mut device)
-                    .map(|_| device.unwrap())
-                    .unwrap()
-            };
-            let desc = self.resource.GetDesc();
-            let mut foot_print = D3D12_PLACED_SUBRESOURCE_FOOTPRINT::default();
-            device.GetCopyableFootprints(
-                &desc,
-                0,
-                1,
-                0,
-                &mut foot_print,
-                std::ptr::null_mut(),
-                std::ptr::null_mut(),
-                std::ptr::null_mut(),
-            );
-            let copy_src = D3D12_TEXTURE_COPY_LOCATION {
-                Type: D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX,
-                pResource: Some(self.resource.clone()),
-                Anonymous: D3D12_TEXTURE_COPY_LOCATION_0 {
-                    SubresourceIndex: 0,
-                },
-            };
-            let copy_dest = D3D12_TEXTURE_COPY_LOCATION {
-                Type: D3D12_TEXTURE_COPY_TYPE_PLACED_FOOTPRINT,
-                pResource: Some(dest.resource().clone()),
-                Anonymous: D3D12_TEXTURE_COPY_LOCATION_0 {
-                    PlacedFootprint: foot_print,
-                },
-            };
-            cmd_list.CopyTextureRegion(&copy_dest, 0, 0, 0, &copy_src, std::ptr::null());
-        }
-    }
-}
+impl CopySource for CopyResource {}
 
 pub struct PixelShaderResource {
     resource: ID3D12Resource,
@@ -379,11 +358,14 @@ impl Renderer {
             &self.cmd_allocators[Self::COPY_ALLOCATOR],
         )?;
         let src = self.render_target.copy_resource(index);
-        cmd_list.record(&self.cmd_allocators[Self::COPY_ALLOCATOR], |cmd| {
-            cmd.barrier([src.enter()]);
-            cmd.copy(&src, &self.read_back_buffer);
-            cmd.barrier([src.leave()]);
-        })?;
+        cmd_list.record(
+            &self.cmd_allocators[Self::COPY_ALLOCATOR],
+            |cmd: CopyCommand<CopyResource, ReadBackBuffer>| {
+                cmd.barrier([src.enter()]);
+                cmd.copy(&src, &self.read_back_buffer);
+                cmd.barrier([src.leave()]);
+            },
+        )?;
         self.copy_queue.execute([&cmd_list])?.wait()?;
         let img = self.read_back_buffer.to_image()?;
         Ok(Some(img))

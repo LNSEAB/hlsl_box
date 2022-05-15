@@ -150,10 +150,6 @@ impl ReadBackBuffer {
         Ok(Self { buffer, size })
     }
 
-    pub fn resource(&self) -> &ID3D12Resource {
-        self.buffer.handle()
-    }
-
     pub fn to_image(&self) -> Result<image::RgbaImage, Error> {
         let data = self.buffer.map::<u8>()?;
         let mut img = image::RgbaImage::new(self.size.width, self.size.height);
@@ -163,3 +159,61 @@ impl ReadBackBuffer {
         Ok(img)
     }
 }
+
+impl Resource for ReadBackBuffer {
+    fn resource(&self) -> &ID3D12Resource {
+        self.buffer.handle()
+    }
+}
+
+#[derive(Clone, PartialEq, Eq)]
+#[repr(transparent)]
+pub struct DefaultBuffer(pub Buffer);
+
+impl DefaultBuffer {
+    pub fn new(name: &str, device: &ID3D12Device, size: u64) -> Result<Self, Error> {
+        let buffer = utility::Buffer::new(
+            name,
+            device,
+            HeapProperties::new(D3D12_HEAP_TYPE_DEFAULT),
+            size,
+            D3D12_RESOURCE_STATE_COMMON,
+            None,
+        )?;
+        Ok(Self(buffer))
+    }
+}
+
+impl Resource for DefaultBuffer {
+    fn resource(&self) -> &ID3D12Resource {
+        self.0.handle()
+    }
+}
+
+impl CopyDest for DefaultBuffer {}
+
+#[derive(Clone, PartialEq, Eq)]
+#[repr(transparent)]
+pub struct UploadBuffer(pub Buffer);
+
+impl UploadBuffer {
+    pub fn new(name: &str, device: &ID3D12Device, size: u64) -> Result<Self, Error> {
+        let buffer = Buffer::new(
+            name,
+            device,
+            HeapProperties::new(D3D12_HEAP_TYPE_UPLOAD),
+            size + (16 - size % 16) % 16,
+            D3D12_RESOURCE_STATE_GENERIC_READ,
+            None,
+        )?;
+        Ok(Self(buffer))
+    }
+}
+
+impl Resource for UploadBuffer {
+    fn resource(&self) -> &ID3D12Resource {
+        self.0.handle()
+    }
+}
+
+impl CopySource for UploadBuffer {}

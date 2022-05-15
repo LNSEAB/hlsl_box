@@ -110,16 +110,6 @@ where
         }
     }
 
-    pub fn execute_command_lists(
-        &self,
-        cmd_lists: &[Option<ID3D12CommandList>],
-    ) -> Result<Signal, Error> {
-        unsafe {
-            self.queue.ExecuteCommandLists(cmd_lists);
-            self.signal()
-        }
-    }
-
     pub fn execute<const N: usize>(&self, cmd_lists: [&T; N]) -> Result<Signal, Error> {
         unsafe {
             let lists = cmd_lists.map(|l| Some(l.handle()));
