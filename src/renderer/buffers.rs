@@ -88,7 +88,19 @@ impl RenderTargetBuffers {
         self.size
     }
 
-    pub fn target(&self, index: usize) -> RenderTarget {
+    pub fn copy_resource(&self, index: usize) -> CopyResource {
+        CopyResource {
+            resource: self.buffers[index].handle().clone(),
+        }
+    }
+}
+
+impl TargetableBuffers for RenderTargetBuffers {
+    fn len(&self) -> usize {
+        self.buffers.len()
+    }
+
+    fn target(&self, index: usize) -> RenderTarget {
         unsafe {
             let mut handle = self.rtv_heap.GetCPUDescriptorHandleForHeapStart();
             handle.ptr += index * self.rtv_size;
@@ -99,22 +111,22 @@ impl RenderTargetBuffers {
             }
         }
     }
+}
 
-    pub fn source(&self, index: usize) -> ShaderResource {
+impl PixelShaderResourceBuffers for RenderTargetBuffers {
+    fn len(&self) -> usize {
+        self.buffers.len()
+    }
+
+    fn source(&self, index: usize) -> PixelShaderResource {
         unsafe {
             let mut handle = self.desc_heap.GetGPUDescriptorHandleForHeapStart();
             handle.ptr += (index * self.desc_size) as u64;
-            ShaderResource {
+            PixelShaderResource {
                 resource: self.buffers[index].handle().clone(),
                 heap: self.desc_heap.clone(),
                 handle,
             }
-        }
-    }
-
-    pub fn copy_resource(&self, index: usize) -> CopyResource {
-        CopyResource {
-            resource: self.buffers[index].handle().clone(),
         }
     }
 }

@@ -71,11 +71,11 @@ impl Ui {
         Ok(signal)
     }
 
-    pub fn source(&self, index: usize) -> ShaderResource {
+    pub fn source(&self, index: usize) -> PixelShaderResource {
         unsafe {
             let mut handle = self.desc_heap.GetGPUDescriptorHandleForHeapStart();
             handle.ptr += (index * self.desc_size) as u64;
-            ShaderResource {
+            PixelShaderResource {
                 resource: self.buffers[index].0.handle().clone(),
                 heap: self.desc_heap.clone(),
                 handle,

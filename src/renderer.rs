@@ -27,39 +27,14 @@ pub use ui::RenderUi;
 use ui::*;
 use utility::*;
 
-trait Target {
-    fn enter(&self) -> TransitionBarrier;
-    fn leave(&self) -> TransitionBarrier;
-    fn clear(&self, cmd_list: &ID3D12GraphicsCommandList, clear_color: [f32; 4]);
-    fn record(&self, cmd_list: &ID3D12GraphicsCommandList);
+trait Resource {
+    fn resource(&self) -> &ID3D12Resource;
 }
 
-trait Source {
-    fn enter(&self) -> TransitionBarrier;
-    fn leave(&self) -> TransitionBarrier;
-    fn record(&self, cmd_list: &ID3D12GraphicsCommandList);
-}
-
-trait Shader {
-    fn record(&self, cmd_list: &ID3D12GraphicsCommandList);
-}
-
-trait CopySource {
-    fn enter(&self) -> TransitionBarrier;
-    fn leave(&self) -> TransitionBarrier;
-    fn record(&self, cmd_lsit: &ID3D12GraphicsCommandList, dest: &ReadBackBuffer);
-}
-
-pub struct RenderTarget {
-    resource: ID3D12Resource,
-    handle: D3D12_CPU_DESCRIPTOR_HANDLE,
-    size: wita::PhysicalSize<u32>,
-}
-
-impl Target for RenderTarget {
+trait Target: Resource {
     fn enter(&self) -> TransitionBarrier {
         TransitionBarrier {
-            resource: self.resource.clone(),
+            resource: self.resource().clone(),
             subresource: 0,
             state_before: D3D12_RESOURCE_STATE_COMMON,
             state_after: D3D12_RESOURCE_STATE_RENDER_TARGET,
@@ -68,13 +43,74 @@ impl Target for RenderTarget {
 
     fn leave(&self) -> TransitionBarrier {
         TransitionBarrier {
-            resource: self.resource.clone(),
+            resource: self.resource().clone(),
             subresource: 0,
             state_before: D3D12_RESOURCE_STATE_RENDER_TARGET,
             state_after: D3D12_RESOURCE_STATE_COMMON,
         }
     }
 
+    fn clear(&self, cmd_list: &ID3D12GraphicsCommandList, clear_color: [f32; 4]);
+    fn record(&self, cmd_list: &ID3D12GraphicsCommandList);
+}
+
+trait Source: Resource {
+    fn enter(&self) -> TransitionBarrier {
+        TransitionBarrier {
+            resource: self.resource().clone(),
+            subresource: 0,
+            state_before: D3D12_RESOURCE_STATE_COMMON,
+            state_after: D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE,
+        }
+    }
+
+    fn leave(&self) -> TransitionBarrier {
+        TransitionBarrier {
+            resource: self.resource().clone(),
+            subresource: 0,
+            state_before: D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE,
+            state_after: D3D12_RESOURCE_STATE_COMMON,
+        }
+    }
+
+    fn record(&self, cmd_list: &ID3D12GraphicsCommandList);
+}
+
+trait CopySource: Resource {
+    fn enter(&self) -> TransitionBarrier {
+        TransitionBarrier {
+            resource: self.resource().clone(),
+            subresource: 0,
+            state_before: D3D12_RESOURCE_STATE_COMMON,
+            state_after: D3D12_RESOURCE_STATE_COPY_SOURCE,
+        }
+    }
+
+    fn leave(&self) -> TransitionBarrier {
+        TransitionBarrier {
+            resource: self.resource().clone(),
+            subresource: 0,
+            state_before: D3D12_RESOURCE_STATE_COPY_SOURCE,
+            state_after: D3D12_RESOURCE_STATE_COMMON,
+        }
+    }
+
+    fn record(&self, cmd_list: &ID3D12GraphicsCommandList, dest: &ReadBackBuffer);
+}
+
+pub struct RenderTarget {
+    resource: ID3D12Resource,
+    handle: D3D12_CPU_DESCRIPTOR_HANDLE,
+    size: wita::PhysicalSize<u32>,
+}
+
+impl Resource for RenderTarget {
+    fn resource(&self) -> &ID3D12Resource {
+        &self.resource
+    }
+}
+
+impl Target for RenderTarget {
     fn clear(&self, cmd_list: &ID3D12GraphicsCommandList, clear_color: [f32; 4]) {
         unsafe {
             cmd_list.ClearRenderTargetView(self.handle, clear_color.as_ptr(), &[]);
@@ -103,25 +139,13 @@ pub struct CopyResource {
     resource: ID3D12Resource,
 }
 
+impl Resource for CopyResource {
+    fn resource(&self) -> &ID3D12Resource {
+        &self.resource
+    }
+}
+
 impl CopySource for CopyResource {
-    fn enter(&self) -> TransitionBarrier {
-        TransitionBarrier {
-            resource: self.resource.clone(),
-            subresource: 0,
-            state_before: D3D12_RESOURCE_STATE_COMMON,
-            state_after: D3D12_RESOURCE_STATE_COPY_SOURCE,
-        }
-    }
-
-    fn leave(&self) -> TransitionBarrier {
-        TransitionBarrier {
-            resource: self.resource.clone(),
-            subresource: 0,
-            state_before: D3D12_RESOURCE_STATE_COPY_SOURCE,
-            state_after: D3D12_RESOURCE_STATE_COMMON,
-        }
-    }
-
     fn record(&self, cmd_list: &ID3D12GraphicsCommandList, dest: &ReadBackBuffer) {
         unsafe {
             let device = {
@@ -162,37 +186,39 @@ impl CopySource for CopyResource {
     }
 }
 
-pub struct ShaderResource {
+pub struct PixelShaderResource {
     resource: ID3D12Resource,
     heap: ID3D12DescriptorHeap,
     handle: D3D12_GPU_DESCRIPTOR_HANDLE,
 }
 
-impl Source for ShaderResource {
-    fn enter(&self) -> TransitionBarrier {
-        TransitionBarrier {
-            resource: self.resource.clone(),
-            subresource: 0,
-            state_before: D3D12_RESOURCE_STATE_COMMON,
-            state_after: D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE,
-        }
+impl Resource for PixelShaderResource {
+    fn resource(&self) -> &ID3D12Resource {
+        &self.resource
     }
+}
 
-    fn leave(&self) -> TransitionBarrier {
-        TransitionBarrier {
-            resource: self.resource.clone(),
-            subresource: 0,
-            state_before: D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE,
-            state_after: D3D12_RESOURCE_STATE_COMMON,
-        }
-    }
-
+impl Source for PixelShaderResource {
     fn record(&self, cmd_list: &ID3D12GraphicsCommandList) {
         unsafe {
             cmd_list.SetDescriptorHeaps(&[Some(self.heap.clone())]);
             cmd_list.SetGraphicsRootDescriptorTable(0, self.handle);
         }
     }
+}
+
+trait TargetableBuffers {
+    fn len(&self) -> usize;
+    fn target(&self, index: usize) -> RenderTarget;
+}
+
+trait PixelShaderResourceBuffers {
+    fn len(&self) -> usize;
+    fn source(&self, index: usize) -> PixelShaderResource;
+}
+
+trait Shader {
+    fn record(&self, cmd_list: &ID3D12GraphicsCommandList);
 }
 
 pub struct Renderer {
@@ -305,7 +331,7 @@ impl Renderer {
         let cmd_allocators =
             &self.cmd_allocators[current_index..current_index + Self::ALLOCATORS_PER_FRAME];
         let ps_result = self.render_target.source(index);
-        let back_buffer = self.swap_chain.back_buffer(index);
+        let back_buffer = self.swap_chain.target(index);
         let ui_buffer = self.ui.source(index);
         let cmd_list = &self.cmd_list;
         cmd_list.record(&cmd_allocators[0], |cmd| {

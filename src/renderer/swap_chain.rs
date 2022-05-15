@@ -94,19 +94,6 @@ impl SwapChain {
         }
     }
 
-    pub fn back_buffer(&self, index: usize) -> RenderTarget {
-        unsafe {
-            let desc = self.swap_chain.GetDesc1().unwrap();
-            let mut handle = self.rtv_heap.GetCPUDescriptorHandleForHeapStart();
-            handle.ptr += self.rtv_size * index;
-            RenderTarget {
-                resource: self.back_buffers[index].clone(),
-                handle,
-                size: wita::PhysicalSize::new(desc.Width, desc.Height),
-            }
-        }
-    }
-
     pub fn current_buffer(&self) -> usize {
         unsafe { self.swap_chain.GetCurrentBackBufferIndex() as usize }
     }
@@ -143,6 +130,25 @@ impl SwapChain {
                 handle.ptr += rtv_size;
             }
             Ok(back_buffers)
+        }
+    }
+}
+
+impl TargetableBuffers for SwapChain {
+    fn len(&self) -> usize {
+        self.back_buffers.len()
+    }
+
+    fn target(&self, index: usize) -> RenderTarget {
+        unsafe {
+            let desc = self.swap_chain.GetDesc1().unwrap();
+            let mut handle = self.rtv_heap.GetCPUDescriptorHandleForHeapStart();
+            handle.ptr += self.rtv_size * index;
+            RenderTarget {
+                resource: self.back_buffers[index].clone(),
+                handle,
+                size: wita::PhysicalSize::new(desc.Width, desc.Height),
+            }
         }
     }
 }
