@@ -543,11 +543,8 @@ impl Application {
             0.0,
         ];
         let ui_props = UiProperties::new(&settings, &self.ui_props.factory)?;
-        self.renderer.recreate(
-            settings.resolution,
-            &self.compiler,
-            shader_model,
-        )?;
+        self.renderer
+            .recreate(settings.resolution, &self.compiler, shader_model)?;
         self.window_manager.update_resolution(settings.resolution);
         let mut size = self.window_manager.main_window.inner_size();
         if self.window_manager.main_window.is_maximized() {

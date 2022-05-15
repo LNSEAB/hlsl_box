@@ -245,11 +245,8 @@ impl Renderer {
                 Self::COPY_ALLOCATOR
             ))?;
             let copy_queue = CommandQueue::new("Renderer::copy_queue", d3d12_device)?;
-            let render_target = RenderTargetBuffers::new(
-                d3d12_device,
-                resolution,
-                Self::BUFFER_COUNT,
-            )?;
+            let render_target =
+                RenderTargetBuffers::new(d3d12_device, resolution, Self::BUFFER_COUNT)?;
             let pixel_shader = PixelShader::new(d3d12_device, compiler, shader_model)?;
             let ui = Ui::new(d3d12_device, Self::BUFFER_COUNT, window)?;
             let filling_plane = plane::Buffer::new(d3d12_device, &copy_queue)?;
@@ -444,5 +441,92 @@ impl Renderer {
 impl Drop for Renderer {
     fn drop(&mut self) {
         self.wait_all_signals();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn render_test() {
+        let device: ID3D12Device = unsafe {
+            let mut device = None;
+            D3D12CreateDevice(None, D3D_FEATURE_LEVEL_12_1, &mut device).unwrap();
+            device.unwrap()
+        };
+        let cmd_allocator: ID3D12CommandAllocator = unsafe {
+            device
+                .CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT)
+                .unwrap()
+        };
+        let compiler = hlsl::Compiler::new().unwrap();
+        let shader_model = hlsl::ShaderModel::new(&device, Option::<&String>::None).unwrap();
+        let layer_shader = LayerShader::new(&device, &compiler, shader_model).unwrap();
+        let cmd_list = DirectCommandList::new(
+            "render_test::cmd_list",
+            &device,
+            &cmd_allocator,
+            layer_shader,
+        )
+        .unwrap();
+        let cmd_queue =
+            CommandQueue::<DirectCommandList>::new("render_test::cmd_queue", &device).unwrap();
+        let copy_queue =
+            CommandQueue::<CopyCommandList>::new("render_test::copy_queue", &device).unwrap();
+        let plane = plane::Buffer::new(&device, &copy_queue).unwrap();
+        let pixel_shader = PixelShader::new(&device, &compiler, shader_model).unwrap();
+        let resolution = wita::PhysicalSize::new(640, 480);
+        let blob = compiler
+            .compile_from_file(
+                "examples/fill.hlsl",
+                "main",
+                hlsl::Target::PS(shader_model),
+                &[],
+            )
+            .unwrap();
+        let ps = pixel_shader
+            .create_pipeline("render_test::ps", &device, &blob)
+            .unwrap();
+        let parameters = pixel_shader::Parameters {
+            resolution: [resolution.width as f32, resolution.height as f32],
+            mouse: [0.0, 0.0],
+            time: 0.0,
+        };
+        let buffers = RenderTargetBuffers::new(&device, resolution, 1).unwrap();
+        let shader = pixel_shader.apply(&ps, &parameters);
+        let target = buffers.target(0);
+        cmd_list
+            .record(&cmd_allocator, |cmd| {
+                cmd.barrier([target.enter()]);
+                cmd.clear(&target, [0.0, 0.0, 0.0, 0.0]);
+                cmd.draw(&shader, &target, &plane);
+                cmd.barrier([target.leave()]);
+            })
+            .unwrap();
+        cmd_queue.execute([&cmd_list]).unwrap().wait().unwrap();
+        let copy_allocator: ID3D12CommandAllocator = unsafe {
+            device
+                .CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_COPY)
+                .unwrap()
+        };
+        let copy_list =
+            CopyCommandList::new("render_test::copy_list", &device, &copy_allocator).unwrap();
+        let read_back_buffer = ReadBackBuffer::new(&device, resolution).unwrap();
+        let src = buffers.copy_resource(0);
+        copy_list
+            .record(
+                &copy_allocator,
+                |cmd: CopyCommand<CopyResource, ReadBackBuffer>| {
+                    cmd.barrier([src.enter()]);
+                    cmd.copy(&src, &read_back_buffer);
+                    cmd.barrier([src.leave()]);
+                },
+            )
+            .unwrap();
+        copy_queue.execute([&copy_list]).unwrap().wait().unwrap();
+        let ret = read_back_buffer.to_image().unwrap();
+        let img = image::open("test_resource/fill.png").unwrap().to_rgba8();
+        assert!(ret.pixels().zip(img.pixels()).all(|(a, b)| a == b));
     }
 }

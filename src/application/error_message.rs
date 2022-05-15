@@ -57,7 +57,10 @@ impl ErrorMessage {
         if d == 0 {
             return Ok(());
         }
-        let size = wita::LogicalSize::new(view_size.width - self.ui_props.scroll_bar.width, view_size.height);
+        let size = wita::LogicalSize::new(
+            view_size.width - self.ui_props.scroll_bar.width,
+            view_size.height,
+        );
         let mut line = self.current_line;
         if d < 0 {
             let d = d.abs() as usize;
