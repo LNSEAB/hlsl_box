@@ -227,7 +227,6 @@ impl Renderer {
         resolution: wita::PhysicalSize<u32>,
         compiler: &hlsl::Compiler,
         shader_model: hlsl::ShaderModel,
-        clear_color: &[f32; 4],
     ) -> Result<Self, Error> {
         unsafe {
             let (swap_chain, presentable_queue) =
@@ -250,7 +249,6 @@ impl Renderer {
                 d3d12_device,
                 resolution,
                 Self::BUFFER_COUNT,
-                clear_color,
             )?;
             let pixel_shader = PixelShader::new(d3d12_device, compiler, shader_model)?;
             let ui = Ui::new(d3d12_device, Self::BUFFER_COUNT, window)?;
@@ -421,14 +419,12 @@ impl Renderer {
         resolution: settings::Resolution,
         compiler: &hlsl::Compiler,
         shader_model: hlsl::ShaderModel,
-        clear_color: [f32; 4],
     ) -> Result<(), Error> {
         self.wait_all_signals();
         let render_target = RenderTargetBuffers::new(
             &self.d3d12_device,
             wita::PhysicalSize::new(resolution.width, resolution.height),
             Self::BUFFER_COUNT,
-            &clear_color,
         )?;
         let pixel_shader = PixelShader::new(&self.d3d12_device, compiler, shader_model)?;
         let layer_shader = LayerShader::new(&self.d3d12_device, compiler, shader_model)?;

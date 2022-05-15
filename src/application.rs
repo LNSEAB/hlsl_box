@@ -249,7 +249,6 @@ impl Application {
             settings.resolution.into(),
             &compiler,
             shader_model,
-            &clear_color,
         )?;
         let factory = renderer.mltg_factory();
         let ui_props = UiProperties::new(&settings, &factory)?;
@@ -548,7 +547,6 @@ impl Application {
             settings.resolution,
             &self.compiler,
             shader_model,
-            clear_color,
         )?;
         self.window_manager.update_resolution(settings.resolution);
         let mut size = self.window_manager.main_window.inner_size();

@@ -14,7 +14,6 @@ impl RenderTargetBuffers {
         device: &ID3D12Device,
         size: wita::PhysicalSize<u32>,
         count: usize,
-        clear_color: &[f32; 4],
     ) -> Result<Self, Error> {
         unsafe {
             let rtv_heap: ID3D12DescriptorHeap =
@@ -47,7 +46,7 @@ impl RenderTargetBuffers {
                     D3D12_RESOURCE_STATE_COMMON,
                     None,
                     Some(D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET),
-                    clear_color,
+                    &[0.0, 0.0, 0.0, 0.0],
                 )?;
                 let rtv_desc = D3D12_RENDER_TARGET_VIEW_DESC {
                     Format: DXGI_FORMAT_R8G8B8A8_UNORM,
