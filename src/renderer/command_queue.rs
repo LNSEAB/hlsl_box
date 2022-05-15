@@ -91,10 +91,7 @@ impl<T> CommandQueue<T>
 where
     T: CommandList,
 {
-    pub fn new(
-        name: &str,
-        device: &ID3D12Device,
-    ) -> Result<Self, Error> {
+    pub fn new(name: &str, device: &ID3D12Device) -> Result<Self, Error> {
         unsafe {
             let queue: ID3D12CommandQueue =
                 device.CreateCommandQueue(&D3D12_COMMAND_QUEUE_DESC {

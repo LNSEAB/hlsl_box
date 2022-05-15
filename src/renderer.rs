@@ -1,10 +1,9 @@
+mod buffers;
 mod command_list;
 mod command_queue;
 mod layer_shader;
 pub mod pixel_shader;
 mod plane;
-mod read_back_buffer;
-mod render_target;
 mod swap_chain;
 mod ui;
 mod utility;
@@ -17,13 +16,12 @@ use windows::Win32::{
     Graphics::{Direct3D::*, Direct3D12::*, Dxgi::Common::*, Dxgi::*},
 };
 
+use buffers::*;
 use command_list::*;
 use command_queue::*;
 use layer_shader::*;
 pub use pixel_shader::Pipeline;
 use pixel_shader::PixelShader;
-use read_back_buffer::*;
-use render_target::*;
 use swap_chain::*;
 pub use ui::RenderUi;
 use ui::*;
@@ -242,10 +240,7 @@ impl Renderer {
                 "Renderer::cmd_allocators[{}]",
                 Self::COPY_ALLOCATOR
             ))?;
-            let copy_queue = CommandQueue::new(
-                "Renderer::copy_queue",
-                d3d12_device,
-            )?;
+            let copy_queue = CommandQueue::new("Renderer::copy_queue", d3d12_device)?;
             let render_target = RenderTargetBuffers::new(
                 d3d12_device,
                 resolution,

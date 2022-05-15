@@ -46,10 +46,7 @@ impl SwapChain {
         count: usize,
     ) -> Result<(Self, PresentableQueue), Error> {
         unsafe {
-            let cmd_queue = CommandQueue::new(
-                "PresentableQueue::cmd_queue",
-                device,
-            )?;
+            let cmd_queue = CommandQueue::new("PresentableQueue::cmd_queue", device)?;
             let window_size = window.inner_size();
             let dxgi_factory: IDXGIFactory5 = CreateDXGIFactory1()?;
             let desc = DXGI_SWAP_CHAIN_DESC1 {
