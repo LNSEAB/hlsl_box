@@ -377,7 +377,7 @@ impl Application {
                         let dpi = main_window.dpi();
                         let size = main_window.inner_size().to_logical(dpi).cast::<f32>();
                         let mouse_pos = cursor_position.to_logical(dpi as _).cast::<f32>();
-                        em.mouse_event(size, mouse_pos, Some((button, state)))?;
+                        em.mouse_event(mouse_pos, Some((button, state)), size)?;
                     }
                 }
                 Some(WindowEvent::Wheel(d)) => {
@@ -453,7 +453,7 @@ impl Application {
                         let dpi = main_window.dpi();
                         let size = main_window.inner_size().to_logical(dpi).cast::<f32>();
                         let mouse_pos = cursor_position.to_logical(dpi as _).cast::<f32>();
-                        em.mouse_event(size, mouse_pos, None)?;
+                        em.mouse_event(mouse_pos, None, size)?;
                     }
                 }
             }
@@ -567,7 +567,7 @@ impl Application {
             State::Error(em) => {
                 let dpi = self.window_manager.main_window.dpi();
                 let size = size.to_logical(dpi as _).cast::<f32>();
-                em.reset(size, &ui_props)?;
+                em.reset(&ui_props, size)?;
             }
             _ => {}
         }
