@@ -1,12 +1,14 @@
 use super::*;
 
 pub trait CommandList {
+    const LIST_TYPE: D3D12_COMMAND_LIST_TYPE;
+
     fn handle(&self) -> ID3D12CommandList;
 }
 
-pub(super) struct GraphicsCommand<'a>(&'a GraphicsCommandList);
+pub(super) struct DirectCommand<'a>(&'a DirectCommandList);
 
-impl<'a> GraphicsCommand<'a> {
+impl<'a> DirectCommand<'a> {
     pub fn barrier<const N: usize>(&self, barriers: [TransitionBarrier; N]) {
         transition_barriers(&self.0.cmd_list, barriers);
     }
@@ -42,12 +44,12 @@ impl<'a> GraphicsCommand<'a> {
     }
 }
 
-pub(super) struct GraphicsCommandList {
+pub(super) struct DirectCommandList {
     cmd_list: ID3D12GraphicsCommandList,
     layer_shader: LayerShader,
 }
 
-impl GraphicsCommandList {
+impl DirectCommandList {
     pub fn new(
         name: &str,
         device: &ID3D12Device,
@@ -69,13 +71,13 @@ impl GraphicsCommandList {
     pub fn record(
         &self,
         allocator: &ID3D12CommandAllocator,
-        f: impl FnOnce(GraphicsCommand),
+        f: impl FnOnce(DirectCommand),
     ) -> Result<(), Error> {
         unsafe {
             allocator.Reset()?;
             self.cmd_list.Reset(allocator, None)?;
         }
-        f(GraphicsCommand(self));
+        f(DirectCommand(self));
         unsafe {
             self.cmd_list.Close()?;
         }
@@ -83,7 +85,9 @@ impl GraphicsCommandList {
     }
 }
 
-impl CommandList for GraphicsCommandList {
+impl CommandList for DirectCommandList {
+    const LIST_TYPE: D3D12_COMMAND_LIST_TYPE = D3D12_COMMAND_LIST_TYPE_DIRECT;
+
     fn handle(&self) -> ID3D12CommandList {
         self.cmd_list.cast().unwrap()
     }
@@ -136,6 +140,8 @@ impl CopyCommandList {
 }
 
 impl CommandList for CopyCommandList {
+    const LIST_TYPE: D3D12_COMMAND_LIST_TYPE = D3D12_COMMAND_LIST_TYPE_COPY;
+
     fn handle(&self) -> ID3D12CommandList {
         self.0.cast().unwrap()
     }

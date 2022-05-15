@@ -7,7 +7,7 @@ pub trait RenderUi {
 pub struct Ui {
     context: mltg::Context<mltg::Direct3D12>,
     window: wita::Window,
-    cmd_queue: CommandQueue,
+    cmd_queue: CommandQueue<DirectCommandList>,
     desc_heap: ID3D12DescriptorHeap,
     desc_size: usize,
     buffers: Vec<(Texture2D, mltg::d3d12::RenderTarget)>,
@@ -18,7 +18,7 @@ impl Ui {
     pub fn new(device: &ID3D12Device, count: usize, window: &wita::Window) -> Result<Self, Error> {
         unsafe {
             let size = window.inner_size();
-            let cmd_queue = CommandQueue::new("Ui", device, D3D12_COMMAND_LIST_TYPE_DIRECT)?;
+            let cmd_queue = CommandQueue::new("Ui", device)?;
             let context = mltg::Context::new(mltg::Direct3D12::new(device, cmd_queue.handle())?)?;
             context.set_dpi(window.dpi() as _);
             let desc_heap: ID3D12DescriptorHeap =
@@ -57,7 +57,11 @@ impl Ui {
 
     pub fn render(&self, index: usize, r: &impl RenderUi) -> Result<Signal, Error> {
         let buffer = &self.buffers[index];
-        let size = self.window.inner_size().to_logical(self.window.dpi() as _).cast::<f32>();
+        let size = self
+            .window
+            .inner_size()
+            .to_logical(self.window.dpi() as _)
+            .cast::<f32>();
         self.context.draw(&buffer.1, |cmd| {
             cmd.clear([0.0, 0.0, 0.0, 0.0]);
             r.render(cmd, size);

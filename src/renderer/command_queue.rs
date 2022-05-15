@@ -80,22 +80,25 @@ impl Signals {
     }
 }
 
-pub(super) struct CommandQueue {
+pub(super) struct CommandQueue<T> {
     queue: ID3D12CommandQueue,
     fence: ID3D12Fence,
     value: Cell<u64>,
+    _t: std::marker::PhantomData<T>,
 }
 
-impl CommandQueue {
+impl<T> CommandQueue<T>
+where
+    T: CommandList,
+{
     pub fn new(
         name: &str,
         device: &ID3D12Device,
-        t: D3D12_COMMAND_LIST_TYPE,
     ) -> Result<Self, Error> {
         unsafe {
             let queue: ID3D12CommandQueue =
                 device.CreateCommandQueue(&D3D12_COMMAND_QUEUE_DESC {
-                    Type: t,
+                    Type: T::LIST_TYPE,
                     ..Default::default()
                 })?;
             let fence: ID3D12Fence = device.CreateFence(0, D3D12_FENCE_FLAG_NONE)?;
@@ -105,6 +108,7 @@ impl CommandQueue {
                 queue,
                 fence,
                 value: Cell::new(1),
+                _t: std::marker::PhantomData,
             })
         }
     }
@@ -119,10 +123,7 @@ impl CommandQueue {
         }
     }
 
-    pub fn execute<const N: usize>(
-        &self,
-        cmd_lists: [&impl CommandList; N],
-    ) -> Result<Signal, Error> {
+    pub fn execute<const N: usize>(&self, cmd_lists: [&T; N]) -> Result<Signal, Error> {
         unsafe {
             let lists = cmd_lists.map(|l| Some(l.handle()));
             self.queue.ExecuteCommandLists(&lists);

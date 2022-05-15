@@ -203,10 +203,10 @@ pub struct Renderer {
     render_target: RenderTargetBuffers,
     pixel_shader: PixelShader,
     cmd_allocators: Vec<ID3D12CommandAllocator>,
-    cmd_list: GraphicsCommandList,
+    cmd_list: DirectCommandList,
     signals: Signals,
     ui: Ui,
-    copy_queue: CommandQueue,
+    copy_queue: CommandQueue<CopyCommandList>,
     main_queue: PresentableQueue,
     filling_plane: plane::Buffer,
     adjusted_plane: plane::Buffer,
@@ -245,7 +245,6 @@ impl Renderer {
             let copy_queue = CommandQueue::new(
                 "Renderer::copy_queue",
                 d3d12_device,
-                D3D12_COMMAND_LIST_TYPE_COPY,
             )?;
             let render_target = RenderTargetBuffers::new(
                 d3d12_device,
@@ -258,7 +257,7 @@ impl Renderer {
             let filling_plane = plane::Buffer::new(d3d12_device, &copy_queue)?;
             let adjusted_plane = plane::Buffer::new(d3d12_device, &copy_queue)?;
             let layer_shader = LayerShader::new(d3d12_device, compiler, shader_model)?;
-            let cmd_list = GraphicsCommandList::new(
+            let cmd_list = DirectCommandList::new(
                 "Renderer::cmd_list",
                 d3d12_device,
                 &cmd_allocators[0],
@@ -430,7 +429,7 @@ impl Renderer {
         )?;
         let pixel_shader = PixelShader::new(&self.d3d12_device, compiler, shader_model)?;
         let layer_shader = LayerShader::new(&self.d3d12_device, compiler, shader_model)?;
-        let cmd_list = GraphicsCommandList::new(
+        let cmd_list = DirectCommandList::new(
             "Renderer::cmd_list",
             &self.d3d12_device,
             &self.cmd_allocators[0],

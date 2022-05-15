@@ -1,12 +1,12 @@
 use super::*;
 
 pub(super) struct PresentableQueue {
-    queue: CommandQueue,
+    queue: CommandQueue<DirectCommandList>,
     swap_chain: IDXGISwapChain4,
 }
 
 impl PresentableQueue {
-    fn new(queue: CommandQueue, swap_chain: &IDXGISwapChain4) -> Self {
+    fn new(queue: CommandQueue<DirectCommandList>, swap_chain: &IDXGISwapChain4) -> Self {
         Self {
             queue,
             swap_chain: swap_chain.clone(),
@@ -15,7 +15,7 @@ impl PresentableQueue {
 
     pub fn execute<const N: usize>(
         &self,
-        cmd_lists: [&impl CommandList; N],
+        cmd_lists: [&DirectCommandList; N],
     ) -> Result<Signal, Error> {
         self.queue.execute(cmd_lists)
     }
@@ -49,7 +49,6 @@ impl SwapChain {
             let cmd_queue = CommandQueue::new(
                 "PresentableQueue::cmd_queue",
                 device,
-                D3D12_COMMAND_LIST_TYPE_DIRECT,
             )?;
             let window_size = window.inner_size();
             let dxgi_factory: IDXGIFactory5 = CreateDXGIFactory1()?;

@@ -60,7 +60,10 @@ pub(super) struct Buffer {
 impl Buffer {
     const BUFFER_SIZE: u64 = std::mem::size_of::<Meshes>() as _;
 
-    pub fn new(device: &ID3D12Device, copy_queue: &CommandQueue) -> Result<Self, Error> {
+    pub fn new(
+        device: &ID3D12Device,
+        copy_queue: &CommandQueue<CopyCommandList>,
+    ) -> Result<Self, Error> {
         let buffer = utility::Buffer::new(
             "Plane::buffer",
             device,
@@ -90,7 +93,7 @@ impl Buffer {
     pub fn replace(
         &self,
         device: &ID3D12Device,
-        copy_queue: &CommandQueue,
+        copy_queue: &CommandQueue<CopyCommandList>,
         plane: &Meshes,
     ) -> Result<(), Error> {
         Self::copy_buffer(device, copy_queue, &self.buffer, plane)
@@ -98,7 +101,7 @@ impl Buffer {
 
     fn copy_buffer(
         device: &ID3D12Device,
-        copy_queue: &CommandQueue,
+        copy_queue: &CommandQueue<CopyCommandList>,
         buffer: &utility::Buffer,
         plane: &Meshes,
     ) -> Result<(), Error> {
