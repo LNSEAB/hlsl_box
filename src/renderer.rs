@@ -449,7 +449,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn render_test() {
+    fn render_fill_test() {
         let device: ID3D12Device = unsafe {
             let mut device = None;
             D3D12CreateDevice(None, D3D_FEATURE_LEVEL_12_1, &mut device).unwrap();
