@@ -23,6 +23,9 @@ font = "Yu Gothic UI"
 font_size = 12.0
 text_color = [1.0, 1.0, 1.0, 1.0]
 background_color = [0.0, 0.0, 0.0, 0.7]
+error_label_color = [0.9, 0.0, 0.0, 1.0]
+warn_label_color = [0.9, 0.9, 0.0, 1.0]
+info_label_color = [0.0, 0.9, 0.0, 1.0]
 
 [appearance.scroll_bar]
 width = 15.0
