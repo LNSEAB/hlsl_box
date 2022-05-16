@@ -134,7 +134,7 @@ impl Timer {
             d: std::time::Duration::from_secs(0),
         }
     }
-    
+
     fn get(&self) -> std::time::Duration {
         std::time::Instant::now() - self.start_time + self.d
     }
