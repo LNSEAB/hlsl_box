@@ -351,7 +351,7 @@ impl Application {
             frame_counter,
             show_frame_counter: self.show_frame_counter.clone(),
         }));
-        self.play = true;
+        self.play = self.settings.auto_play;
         self.timer = Timer::new();
         self.window_manager
             .main_window

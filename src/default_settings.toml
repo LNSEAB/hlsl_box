@@ -1,5 +1,6 @@
 version = [1, 0]
 frame_counter = true
+auto_play = true
 
 [window]
 x = 0

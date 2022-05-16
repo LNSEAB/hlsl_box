@@ -75,6 +75,7 @@ pub struct Appearance {
 pub struct Settings {
     pub version: Version,
     pub frame_counter: bool,
+    pub auto_play: bool,
     pub window: Window,
     pub resolution: Resolution,
     pub shader: Shader,
