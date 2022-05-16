@@ -154,6 +154,8 @@ fn main() {
             Method::FrameCounter,
         );
         key_map.insert(vec![wita::VirtualKey::PrintScreen], Method::ScreenShot);
+        key_map.insert(vec![wita::VirtualKey::Space], Method::Play);
+        key_map.insert(vec![wita::VirtualKey::Char('R')], Method::Head);
         let (window, window_manager) = WindowHandler::new(&settings, key_map);
         let th_settings = settings;
         let th = std::thread::spawn(move || {

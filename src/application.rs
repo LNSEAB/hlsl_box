@@ -19,6 +19,8 @@ pub enum Method {
     OpenDialog,
     FrameCounter,
     ScreenShot,
+    Play,
+    Head,
 }
 
 #[derive(Clone)]
@@ -120,6 +122,32 @@ impl RenderUi for State {
     }
 }
 
+struct Timer {
+    start_time: std::time::Instant,
+    d: std::time::Duration,
+}
+
+impl Timer {
+    fn new() -> Self {
+        Self {
+            start_time: std::time::Instant::now(),
+            d: std::time::Duration::from_secs(0),
+        }
+    }
+
+    fn get(&self) -> std::time::Duration {
+        std::time::Instant::now() - self.start_time + self.d
+    }
+
+    fn start(&mut self) {
+        self.start_time = std::time::Instant::now();
+    }
+
+    fn stop(&mut self) {
+        self.d = self.get();
+    }
+}
+
 struct ScreenShot {
     date: chrono::Date<chrono::Local>,
     count: u64,
@@ -208,7 +236,8 @@ pub struct Application {
     renderer: Renderer,
     clear_color: [f32; 4],
     mouse: [f32; 2],
-    start_time: std::time::Instant,
+    play: bool,
+    timer: Timer,
     exe_dir_monitor: DirMonitor,
     hlsl_dir_monitor: Option<DirMonitor>,
     state: State,
@@ -264,7 +293,8 @@ impl Application {
             renderer,
             clear_color,
             mouse: [0.0, 0.0],
-            start_time: std::time::Instant::now(),
+            play: false,
+            timer: Timer::new(),
             exe_dir_monitor,
             hlsl_dir_monitor: None,
             state: State::Init,
@@ -321,7 +351,8 @@ impl Application {
             frame_counter,
             show_frame_counter: self.show_frame_counter.clone(),
         }));
-        self.start_time = std::time::Instant::now();
+        self.play = self.settings.auto_play;
+        self.timer = Timer::new();
         self.window_manager
             .main_window
             .set_title(format!("{} {}", TITLE, path.display()));
@@ -367,6 +398,20 @@ impl Application {
                         }
                         Method::ScreenShot => {
                             self.screen_shot.save(&self.renderer)?;
+                        }
+                        Method::Play => {
+                            self.play = !self.play;
+                            if self.play {
+                                self.timer.start();
+                            } else {
+                                self.timer.stop();
+                            }
+                        }
+                        Method::Head => {
+                            self.timer = Timer::new();
+                            if let State::Rendering(r) = &mut self.state {
+                                r.parameters.time = 0.0;
+                            }
                         }
                     }
                 }
@@ -481,14 +526,16 @@ impl Application {
                 }
             }
             if let State::Rendering(r) = &mut self.state {
-                r.parameters.mouse = {
-                    let size = self.window_manager.main_window.inner_size().cast::<f32>();
-                    [
-                        cursor_position.x as f32 / size.width,
-                        cursor_position.y as f32 / size.height,
-                    ]
-                };
-                r.parameters.time = (std::time::Instant::now() - self.start_time).as_secs_f32();
+                if self.play {
+                    r.parameters.mouse = {
+                        let size = self.window_manager.main_window.inner_size().cast::<f32>();
+                        [
+                            cursor_position.x as f32 / size.width,
+                            cursor_position.y as f32 / size.height,
+                        ]
+                    };
+                    r.parameters.time = self.timer.get().as_secs_f32();
+                }
             }
             let ret = match &self.state {
                 State::Rendering(r) => self.renderer.render(
