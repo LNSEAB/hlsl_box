@@ -1,12 +1,12 @@
 use super::*;
 
 pub(super) struct PresentableQueue {
-    queue: CommandQueue,
+    queue: CommandQueue<DirectCommandList>,
     swap_chain: IDXGISwapChain4,
 }
 
 impl PresentableQueue {
-    fn new(queue: CommandQueue, swap_chain: &IDXGISwapChain4) -> Self {
+    fn new(queue: CommandQueue<DirectCommandList>, swap_chain: &IDXGISwapChain4) -> Self {
         Self {
             queue,
             swap_chain: swap_chain.clone(),
@@ -15,7 +15,7 @@ impl PresentableQueue {
 
     pub fn execute<const N: usize>(
         &self,
-        cmd_lists: [&impl CommandList; N],
+        cmd_lists: [&DirectCommandList; N],
     ) -> Result<Signal, Error> {
         self.queue.execute(cmd_lists)
     }
@@ -46,11 +46,7 @@ impl SwapChain {
         count: usize,
     ) -> Result<(Self, PresentableQueue), Error> {
         unsafe {
-            let cmd_queue = CommandQueue::new(
-                "PresentableQueue::cmd_queue",
-                device,
-                D3D12_COMMAND_LIST_TYPE_DIRECT,
-            )?;
+            let cmd_queue = CommandQueue::new("PresentableQueue::cmd_queue", device)?;
             let window_size = window.inner_size();
             let dxgi_factory: IDXGIFactory5 = CreateDXGIFactory1()?;
             let desc = DXGI_SWAP_CHAIN_DESC1 {
@@ -98,19 +94,6 @@ impl SwapChain {
         }
     }
 
-    pub fn back_buffer(&self, index: usize) -> RenderTarget {
-        unsafe {
-            let desc = self.swap_chain.GetDesc1().unwrap();
-            let mut handle = self.rtv_heap.GetCPUDescriptorHandleForHeapStart();
-            handle.ptr += self.rtv_size * index;
-            RenderTarget {
-                resource: self.back_buffers[index].clone(),
-                handle,
-                size: wita::PhysicalSize::new(desc.Width, desc.Height),
-            }
-        }
-    }
-
     pub fn current_buffer(&self) -> usize {
         unsafe { self.swap_chain.GetCurrentBackBufferIndex() as usize }
     }
@@ -147,6 +130,25 @@ impl SwapChain {
                 handle.ptr += rtv_size;
             }
             Ok(back_buffers)
+        }
+    }
+}
+
+impl TargetableBuffers for SwapChain {
+    fn len(&self) -> usize {
+        self.back_buffers.len()
+    }
+
+    fn target(&self, index: usize) -> RenderTarget {
+        unsafe {
+            let desc = self.swap_chain.GetDesc1().unwrap();
+            let mut handle = self.rtv_heap.GetCPUDescriptorHandleForHeapStart();
+            handle.ptr += self.rtv_size * index;
+            RenderTarget {
+                resource: self.back_buffers[index].clone(),
+                handle,
+                size: wita::PhysicalSize::new(desc.Width, desc.Height),
+            }
         }
     }
 }

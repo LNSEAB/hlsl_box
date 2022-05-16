@@ -52,7 +52,7 @@ impl Meshes {
 
 #[derive(Clone)]
 pub(super) struct Buffer {
-    buffer: utility::Buffer,
+    buffer: DefaultBuffer,
     pub vbv: D3D12_VERTEX_BUFFER_VIEW,
     pub ibv: D3D12_INDEX_BUFFER_VIEW,
 }
@@ -60,23 +60,19 @@ pub(super) struct Buffer {
 impl Buffer {
     const BUFFER_SIZE: u64 = std::mem::size_of::<Meshes>() as _;
 
-    pub fn new(device: &ID3D12Device, copy_queue: &CommandQueue) -> Result<Self, Error> {
-        let buffer = utility::Buffer::new(
-            "Plane::buffer",
-            device,
-            HeapProperties::new(D3D12_HEAP_TYPE_DEFAULT),
-            Self::BUFFER_SIZE,
-            D3D12_RESOURCE_STATE_COMMON,
-            None,
-        )?;
+    pub fn new(
+        device: &ID3D12Device,
+        copy_queue: &CommandQueue<CopyCommandList>,
+    ) -> Result<Self, Error> {
+        let buffer = DefaultBuffer::new("plane::Buffer::buffer", device, Self::BUFFER_SIZE)?;
         Self::copy_buffer(device, copy_queue, &buffer, &Meshes::new(1.0, 1.0))?;
         let vbv = D3D12_VERTEX_BUFFER_VIEW {
-            BufferLocation: buffer.gpu_virtual_address(),
+            BufferLocation: buffer.0.gpu_virtual_address(),
             SizeInBytes: Meshes::vertices_size() as _,
             StrideInBytes: std::mem::size_of::<Vertex>() as _,
         };
         let ibv = D3D12_INDEX_BUFFER_VIEW {
-            BufferLocation: buffer.gpu_virtual_address() + Meshes::vertices_size() as u64,
+            BufferLocation: buffer.0.gpu_virtual_address() + Meshes::vertices_size() as u64,
             SizeInBytes: Meshes::indicies_size() as _,
             Format: DXGI_FORMAT_R32_UINT,
         };
@@ -90,7 +86,7 @@ impl Buffer {
     pub fn replace(
         &self,
         device: &ID3D12Device,
-        copy_queue: &CommandQueue,
+        copy_queue: &CommandQueue<CopyCommandList>,
         plane: &Meshes,
     ) -> Result<(), Error> {
         Self::copy_buffer(device, copy_queue, &self.buffer, plane)
@@ -98,59 +94,31 @@ impl Buffer {
 
     fn copy_buffer(
         device: &ID3D12Device,
-        copy_queue: &CommandQueue,
-        buffer: &utility::Buffer,
+        copy_queue: &CommandQueue<CopyCommandList>,
+        buffer: &DefaultBuffer,
         plane: &Meshes,
     ) -> Result<(), Error> {
         unsafe {
             let uploader = {
-                let uploader = utility::Buffer::new(
-                    "Plane::uploader",
-                    device,
-                    HeapProperties::new(D3D12_HEAP_TYPE_UPLOAD),
-                    Self::BUFFER_SIZE + (16 - Self::BUFFER_SIZE % 16) % 16,
-                    D3D12_RESOURCE_STATE_GENERIC_READ,
-                    None,
-                )?;
-                {
-                    let data = uploader.map()?;
-                    std::ptr::copy_nonoverlapping(plane, data.as_mut(), 1);
-                }
+                let uploader =
+                    UploadBuffer::new("plane::Buffer::uploader", device, Self::BUFFER_SIZE)?;
+                let data = uploader.0.map()?;
+                std::ptr::copy_nonoverlapping(plane, data.as_mut(), 1);
+                std::mem::drop(data);
                 uploader
             };
             let cmd_allocator: ID3D12CommandAllocator =
                 device.CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_COPY)?;
-            let cmd_list: ID3D12GraphicsCommandList =
-                device.CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_COPY, &cmd_allocator, None)?;
-            transition_barriers(
-                &cmd_list,
-                [TransitionBarrier {
-                    resource: buffer.clone().into(),
-                    subresource: 0,
-                    state_before: D3D12_RESOURCE_STATE_COMMON,
-                    state_after: D3D12_RESOURCE_STATE_COPY_DEST,
-                }],
-            );
-            cmd_list.CopyBufferRegion(
-                buffer.handle(),
-                0,
-                uploader.handle(),
-                0,
-                Self::BUFFER_SIZE as _,
-            );
-            transition_barriers(
-                &cmd_list,
-                [TransitionBarrier {
-                    resource: buffer.clone().into(),
-                    subresource: 0,
-                    state_before: D3D12_RESOURCE_STATE_COPY_DEST,
-                    state_after: D3D12_RESOURCE_STATE_COMMON,
-                }],
-            );
-            cmd_list.Close()?;
-            copy_queue
-                .execute_command_lists(&[Some(cmd_list.cast()?)])?
-                .wait()?;
+            let cmd_list = CopyCommandList::new("plane::Buffer::cmd_list", device, &cmd_allocator)?;
+            cmd_list.record(
+                &cmd_allocator,
+                |cmd: CopyCommand<UploadBuffer, DefaultBuffer>| {
+                    cmd.barrier([buffer.enter()]);
+                    cmd.copy(&uploader, buffer);
+                    cmd.barrier([buffer.leave()]);
+                },
+            )?;
+            copy_queue.execute([&cmd_list])?.wait()?;
             Ok(())
         }
     }

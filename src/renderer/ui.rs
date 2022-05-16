@@ -1,12 +1,13 @@
 use super::*;
 
 pub trait RenderUi {
-    fn render(&self, cmd: &mltg::DrawCommand);
+    fn render(&self, cmd: &mltg::DrawCommand, size: wita::LogicalSize<f32>);
 }
 
 pub struct Ui {
     context: mltg::Context<mltg::Direct3D12>,
-    cmd_queue: CommandQueue,
+    window: wita::Window,
+    cmd_queue: CommandQueue<DirectCommandList>,
     desc_heap: ID3D12DescriptorHeap,
     desc_size: usize,
     buffers: Vec<(Texture2D, mltg::d3d12::RenderTarget)>,
@@ -17,7 +18,7 @@ impl Ui {
     pub fn new(device: &ID3D12Device, count: usize, window: &wita::Window) -> Result<Self, Error> {
         unsafe {
             let size = window.inner_size();
-            let cmd_queue = CommandQueue::new("Ui", device, D3D12_COMMAND_LIST_TYPE_DIRECT)?;
+            let cmd_queue = CommandQueue::new("Ui", device)?;
             let context = mltg::Context::new(mltg::Direct3D12::new(device, cmd_queue.handle())?)?;
             context.set_dpi(window.dpi() as _);
             let desc_heap: ID3D12DescriptorHeap =
@@ -44,6 +45,7 @@ impl Ui {
             let signals = Signals::new(count);
             Ok(Self {
                 context,
+                window: window.clone(),
                 cmd_queue,
                 desc_heap,
                 desc_size,
@@ -55,20 +57,25 @@ impl Ui {
 
     pub fn render(&self, index: usize, r: &impl RenderUi) -> Result<Signal, Error> {
         let buffer = &self.buffers[index];
+        let size = self
+            .window
+            .inner_size()
+            .to_logical(self.window.dpi() as _)
+            .cast::<f32>();
         self.context.draw(&buffer.1, |cmd| {
             cmd.clear([0.0, 0.0, 0.0, 0.0]);
-            r.render(cmd);
+            r.render(cmd, size);
         })?;
         let signal = self.cmd_queue.signal()?;
         self.signals.set(index, signal.clone());
         Ok(signal)
     }
 
-    pub fn source(&self, index: usize) -> ShaderResource {
+    pub fn source(&self, index: usize) -> PixelShaderResource {
         unsafe {
             let mut handle = self.desc_heap.GetGPUDescriptorHandleForHeapStart();
             handle.ptr += (index * self.desc_size) as u64;
-            ShaderResource {
+            PixelShaderResource {
                 resource: self.buffers[index].0.handle().clone(),
                 heap: self.desc_heap.clone(),
                 handle,

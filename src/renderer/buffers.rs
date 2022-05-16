@@ -14,7 +14,6 @@ impl RenderTargetBuffers {
         device: &ID3D12Device,
         size: wita::PhysicalSize<u32>,
         count: usize,
-        clear_color: &[f32; 4],
     ) -> Result<Self, Error> {
         unsafe {
             let rtv_heap: ID3D12DescriptorHeap =
@@ -47,7 +46,7 @@ impl RenderTargetBuffers {
                     D3D12_RESOURCE_STATE_COMMON,
                     None,
                     Some(D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET),
-                    clear_color,
+                    &[0.0, 0.0, 0.0, 0.0],
                 )?;
                 let rtv_desc = D3D12_RENDER_TARGET_VIEW_DESC {
                     Format: DXGI_FORMAT_R8G8B8A8_UNORM,
@@ -88,7 +87,19 @@ impl RenderTargetBuffers {
         self.size
     }
 
-    pub fn target(&self, index: usize) -> RenderTarget {
+    pub fn copy_resource(&self, index: usize) -> CopyResource {
+        CopyResource {
+            resource: self.buffers[index].handle().clone(),
+        }
+    }
+}
+
+impl TargetableBuffers for RenderTargetBuffers {
+    fn len(&self) -> usize {
+        self.buffers.len()
+    }
+
+    fn target(&self, index: usize) -> RenderTarget {
         unsafe {
             let mut handle = self.rtv_heap.GetCPUDescriptorHandleForHeapStart();
             handle.ptr += index * self.rtv_size;
@@ -99,22 +110,109 @@ impl RenderTargetBuffers {
             }
         }
     }
+}
 
-    pub fn source(&self, index: usize) -> ShaderResource {
+impl PixelShaderResourceBuffers for RenderTargetBuffers {
+    fn len(&self) -> usize {
+        self.buffers.len()
+    }
+
+    fn source(&self, index: usize) -> PixelShaderResource {
         unsafe {
             let mut handle = self.desc_heap.GetGPUDescriptorHandleForHeapStart();
             handle.ptr += (index * self.desc_size) as u64;
-            ShaderResource {
+            PixelShaderResource {
                 resource: self.buffers[index].handle().clone(),
                 heap: self.desc_heap.clone(),
                 handle,
             }
         }
     }
+}
 
-    pub fn copy_resource(&self, index: usize) -> CopyResource {
-        CopyResource {
-            resource: self.buffers[index].handle().clone(),
+pub struct ReadBackBuffer {
+    buffer: Buffer,
+    size: wita::PhysicalSize<u32>,
+}
+
+impl ReadBackBuffer {
+    pub fn new(device: &ID3D12Device, size: wita::PhysicalSize<u32>) -> Result<Self, Error> {
+        let s = (size.width * size.height * 4) as u64;
+        let buffer = Buffer::new(
+            "ReadBackBuffer",
+            device,
+            HeapProperties::new(D3D12_HEAP_TYPE_READBACK),
+            s + (16 - s % 16) % 16,
+            D3D12_RESOURCE_STATE_COPY_DEST,
+            None,
+        )?;
+        Ok(Self { buffer, size })
+    }
+
+    pub fn to_image(&self) -> Result<image::RgbaImage, Error> {
+        let data = self.buffer.map::<u8>()?;
+        let mut img = image::RgbaImage::new(self.size.width, self.size.height);
+        unsafe {
+            std::ptr::copy_nonoverlapping(data.as_ref(), img.as_mut_ptr(), img.len());
         }
+        Ok(img)
     }
 }
+
+impl Resource for ReadBackBuffer {
+    fn resource(&self) -> &ID3D12Resource {
+        self.buffer.handle()
+    }
+}
+
+#[derive(Clone, PartialEq, Eq)]
+#[repr(transparent)]
+pub struct DefaultBuffer(pub Buffer);
+
+impl DefaultBuffer {
+    pub fn new(name: &str, device: &ID3D12Device, size: u64) -> Result<Self, Error> {
+        let buffer = utility::Buffer::new(
+            name,
+            device,
+            HeapProperties::new(D3D12_HEAP_TYPE_DEFAULT),
+            size,
+            D3D12_RESOURCE_STATE_COMMON,
+            None,
+        )?;
+        Ok(Self(buffer))
+    }
+}
+
+impl Resource for DefaultBuffer {
+    fn resource(&self) -> &ID3D12Resource {
+        self.0.handle()
+    }
+}
+
+impl CopyDest for DefaultBuffer {}
+
+#[derive(Clone, PartialEq, Eq)]
+#[repr(transparent)]
+pub struct UploadBuffer(pub Buffer);
+
+impl UploadBuffer {
+    pub fn new(name: &str, device: &ID3D12Device, size: u64) -> Result<Self, Error> {
+        let buffer = Buffer::new(
+            name,
+            device,
+            HeapProperties::new(D3D12_HEAP_TYPE_UPLOAD),
+            size + (16 - size % 16) % 16,
+            D3D12_RESOURCE_STATE_GENERIC_READ,
+            None,
+        )?;
+        Ok(Self(buffer))
+    }
+}
+
+impl Resource for UploadBuffer {
+    fn resource(&self) -> &ID3D12Resource {
+        self.0.handle()
+    }
+}
+
+impl CopySource for UploadBuffer {}

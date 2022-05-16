@@ -104,7 +104,7 @@ enum State {
 }
 
 impl RenderUi for State {
-    fn render(&self, cmd: &mltg::DrawCommand) {
+    fn render(&self, cmd: &mltg::DrawCommand, size: wita::LogicalSize<f32>) {
         match &self {
             State::Init => {}
             State::Rendering(r) => {
@@ -114,7 +114,7 @@ impl RenderUi for State {
                 }
             }
             State::Error(e) => {
-                e.draw(cmd);
+                e.draw(cmd, size);
             }
         }
     }
@@ -249,7 +249,6 @@ impl Application {
             settings.resolution.into(),
             &compiler,
             shader_model,
-            &clear_color,
         )?;
         let factory = renderer.mltg_factory();
         let ui_props = UiProperties::new(&settings, &factory)?;
@@ -378,7 +377,7 @@ impl Application {
                         let dpi = main_window.dpi();
                         let size = main_window.inner_size().to_logical(dpi).cast::<f32>();
                         let mouse_pos = cursor_position.to_logical(dpi as _).cast::<f32>();
-                        em.mouse_event(size, mouse_pos, Some((button, state)))?;
+                        em.mouse_event(mouse_pos, Some((button, state)), size)?;
                     }
                 }
                 Some(WindowEvent::Wheel(d)) => {
@@ -454,7 +453,7 @@ impl Application {
                         let dpi = main_window.dpi();
                         let size = main_window.inner_size().to_logical(dpi).cast::<f32>();
                         let mouse_pos = cursor_position.to_logical(dpi as _).cast::<f32>();
-                        em.mouse_event(size, mouse_pos, None)?;
+                        em.mouse_event(mouse_pos, None, size)?;
                     }
                 }
             }
@@ -520,7 +519,6 @@ impl Application {
             .cast::<f32>();
         self.set_state(State::Error(ErrorMessage::new(
             path.to_path_buf(),
-            self.window_manager.main_window.clone(),
             &e,
             &self.ui_props,
             [size.width, size.height].into(),
@@ -545,12 +543,8 @@ impl Application {
             0.0,
         ];
         let ui_props = UiProperties::new(&settings, &self.ui_props.factory)?;
-        self.renderer.recreate(
-            settings.resolution,
-            &self.compiler,
-            shader_model,
-            clear_color,
-        )?;
+        self.renderer
+            .recreate(settings.resolution, &self.compiler, shader_model)?;
         self.window_manager.update_resolution(settings.resolution);
         let mut size = self.window_manager.main_window.inner_size();
         if self.window_manager.main_window.is_maximized() {
@@ -570,7 +564,7 @@ impl Application {
             State::Error(em) => {
                 let dpi = self.window_manager.main_window.dpi();
                 let size = size.to_logical(dpi as _).cast::<f32>();
-                em.reset(size, &ui_props)?;
+                em.reset(&ui_props, size)?;
             }
             _ => {}
         }
