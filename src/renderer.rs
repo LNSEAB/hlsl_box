@@ -431,6 +431,7 @@ impl Renderer {
             &self.cmd_allocators[0],
             layer_shader,
         )?;
+        self.read_back_buffer = ReadBackBuffer::new(&self.d3d12_device, resolution.into())?;
         self.render_target = render_target;
         self.pixel_shader = pixel_shader;
         self.cmd_list = cmd_list;
