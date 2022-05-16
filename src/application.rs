@@ -526,14 +526,14 @@ impl Application {
                 }
             }
             if let State::Rendering(r) = &mut self.state {
-                r.parameters.mouse = {
-                    let size = self.window_manager.main_window.inner_size().cast::<f32>();
-                    [
-                        cursor_position.x as f32 / size.width,
-                        cursor_position.y as f32 / size.height,
-                    ]
-                };
                 if self.play {
+                    r.parameters.mouse = {
+                        let size = self.window_manager.main_window.inner_size().cast::<f32>();
+                        [
+                            cursor_position.x as f32 / size.width,
+                            cursor_position.y as f32 / size.height,
+                        ]
+                    };
                     r.parameters.time = self.timer.get().as_secs_f32();
                 }
             }
