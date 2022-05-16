@@ -20,6 +20,7 @@ pub enum Method {
     FrameCounter,
     ScreenShot,
     Play,
+    Head,
 }
 
 #[derive(Clone)]
@@ -122,24 +123,24 @@ impl RenderUi for State {
 }
 
 struct Timer {
-    start: std::time::Instant,
+    start_time: std::time::Instant,
     d: std::time::Duration,
 }
 
 impl Timer {
     fn new() -> Self {
         Self {
-            start: std::time::Instant::now(),
+            start_time: std::time::Instant::now(),
             d: std::time::Duration::from_secs(0),
         }
     }
     
     fn get(&self) -> std::time::Duration {
-        std::time::Instant::now() - self.start + self.d
+        std::time::Instant::now() - self.start_time + self.d
     }
 
     fn start(&mut self) {
-        self.start = std::time::Instant::now();
+        self.start_time = std::time::Instant::now();
     }
 
     fn stop(&mut self) {
@@ -404,6 +405,12 @@ impl Application {
                                 self.timer.start();
                             } else {
                                 self.timer.stop();
+                            }
+                        }
+                        Method::Head => {
+                            self.timer = Timer::new();
+                            if let State::Rendering(r) = &mut self.state {
+                                r.parameters.time = 0.0;
                             }
                         }
                     }
