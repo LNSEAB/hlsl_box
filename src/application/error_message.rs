@@ -8,6 +8,7 @@ enum TextColor {
     Error,
     Warn,
     Info,
+    UnderLine,
 }
 
 enum Layout {
@@ -233,6 +234,7 @@ impl ErrorMessage {
                             TextColor::Error => &self.ui_props.error_label_color,
                             TextColor::Warn => &self.ui_props.warn_label_color,
                             TextColor::Info => &self.ui_props.info_label_color,
+                            TextColor::UnderLine => &self.ui_props.under_line_color,
                         };
                         cmd.draw_text_layout(text, color, [x, y]);
                         x += text.size().width;
@@ -337,6 +339,8 @@ impl ErrorMessage {
                 x,
                 true,
             )?;
+        } else if text.chars().all(|c| c.is_ascii_whitespace() || c == '~' || c == '^') {
+            self.create_text_layouts(buffer, text, view_size, TextColor::UnderLine, 0.0, false)?;
         } else {
             self.create_text_layouts(buffer, text, view_size, TextColor::Text, 0.0, false)?;
         }

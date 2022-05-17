@@ -59,6 +59,7 @@ struct UiProperties {
     error_label_color: mltg::Brush,
     warn_label_color: mltg::Brush,
     info_label_color: mltg::Brush,
+    under_line_color: mltg::Brush,
     bg_color: mltg::Brush,
     scroll_bar: ScrollBarProperties,
     line_height: f32,
@@ -78,6 +79,8 @@ impl UiProperties {
             factory.create_solid_color_brush(settings.appearance.warn_label_color)?;
         let info_label_color =
             factory.create_solid_color_brush(settings.appearance.info_label_color)?;
+        let under_line_color =
+            factory.create_solid_color_brush(settings.appearance.under_line_color)?;
         let bg_color = factory.create_solid_color_brush(settings.appearance.background_color)?;
         let line_height = {
             let layout = factory.create_text_layout(
@@ -96,6 +99,7 @@ impl UiProperties {
             error_label_color,
             warn_label_color,
             info_label_color,
+            under_line_color,
             bg_color,
             scroll_bar,
             line_height,
