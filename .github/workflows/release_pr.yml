@@ -1,20 +1,12 @@
-name: Test
+name: ReleasePR
+
 on:
-  pull_request:
-    branches-ignore:
-      - 'readme'
-      - 'document'
-      - 'releases'
-      - 'releases-**'
-      - staging
   push:
     branches:
-      - master
-    tags-ignore:
-      - "[0-9]+.[0-9]+.[0-9]+"
+      - staging
 
 jobs:
-  test:
+  release-pr:
     runs-on: windows-2019
     steps:
       - name: Checkout
@@ -26,20 +18,22 @@ jobs:
         with:
           toolchain: stable
           target: x86_64-pc-windows-msvc
-          components: rustfmt, clippy
-      - name: Format
+      - name: Cargo install
+        continue-on-error: true
         uses: actions-rs/cargo@v1
         with:
-          command: fmt
-          args: --all -- --check
-      - name: Clippy
-        uses: actions-rs/cargo@v1
-        with:
-          command: clippy
+          command: install
+          args: --locked cargo-about
       - name: Build
         shell: pwsh
-        run: ./script/build.ps1
+        run: ./script/package.ps1
       - name: Test
         uses: actions-rs/cargo@v1
         with:
           command: test
+          args: --profile production
+      - name: Pull Request
+        uses: bakunyo/git-pr-release-action@master
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GIT_PR_RELEASE_TITLE: ${{ github.event.head_commit.message }}
