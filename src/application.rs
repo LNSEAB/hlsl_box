@@ -56,6 +56,10 @@ struct UiProperties {
     factory: mltg::Factory,
     text_format: mltg::TextFormat,
     text_color: mltg::Brush,
+    error_label_color: mltg::Brush,
+    warn_label_color: mltg::Brush,
+    info_label_color: mltg::Brush,
+    under_line_color: mltg::Brush,
     bg_color: mltg::Brush,
     scroll_bar: ScrollBarProperties,
     line_height: f32,
@@ -69,6 +73,14 @@ impl UiProperties {
             None,
         )?;
         let text_color = factory.create_solid_color_brush(settings.appearance.text_color)?;
+        let error_label_color =
+            factory.create_solid_color_brush(settings.appearance.error_label_color)?;
+        let warn_label_color =
+            factory.create_solid_color_brush(settings.appearance.warn_label_color)?;
+        let info_label_color =
+            factory.create_solid_color_brush(settings.appearance.info_label_color)?;
+        let under_line_color =
+            factory.create_solid_color_brush(settings.appearance.under_line_color)?;
         let bg_color = factory.create_solid_color_brush(settings.appearance.background_color)?;
         let line_height = {
             let layout = factory.create_text_layout(
@@ -84,6 +96,10 @@ impl UiProperties {
             factory: factory.clone(),
             text_format,
             text_color,
+            error_label_color,
+            warn_label_color,
+            info_label_color,
+            under_line_color,
             bg_color,
             scroll_bar,
             line_height,
@@ -556,7 +572,7 @@ impl Application {
         Ok(())
     }
 
-    fn set_error(&mut self, path: &Path, e: Error) -> Result<(), Error> {
+    fn set_error(&mut self, path: &Path, e: Error) -> anyhow::Result<()> {
         let dpi = self.window_manager.main_window.dpi();
         let size = self
             .window_manager
@@ -579,7 +595,7 @@ impl Application {
         self.state = new_state;
     }
 
-    fn reload_settings(&mut self) -> Result<(), Error> {
+    fn reload_settings(&mut self) -> anyhow::Result<()> {
         let settings = Settings::load(&*SETTINGS_PATH)?;
         let shader_model =
             hlsl::ShaderModel::new(&self.d3d12_device, settings.shader.version.as_ref())?;

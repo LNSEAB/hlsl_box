@@ -68,6 +68,10 @@ pub struct Appearance {
     pub font_size: f32,
     pub text_color: [f32; 4],
     pub background_color: [f32; 4],
+    pub error_label_color: [f32; 4],
+    pub warn_label_color: [f32; 4],
+    pub info_label_color: [f32; 4],
+    pub under_line_color: [f32; 4],
     pub scroll_bar: ScrollBar,
 }
 
