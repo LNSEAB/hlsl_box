@@ -53,5 +53,6 @@ strip = "debuginfo"
 [package.metadata.release]
 dev-version = false
 publish = false
+push = false
 tag = false
 pre-release-commit-message = "{{version}}"
