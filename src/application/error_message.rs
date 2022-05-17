@@ -339,7 +339,10 @@ impl ErrorMessage {
                 x,
                 true,
             )?;
-        } else if text.chars().all(|c| c.is_ascii_whitespace() || c == '~' || c == '^') {
+        } else if text
+            .chars()
+            .all(|c| c.is_ascii_whitespace() || c == '~' || c == '^')
+        {
             self.create_text_layouts(buffer, text, view_size, TextColor::UnderLine, 0.0, false)?;
         } else {
             self.create_text_layouts(buffer, text, view_size, TextColor::Text, 0.0, false)?;
