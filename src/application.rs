@@ -68,7 +68,11 @@ struct UiProperties {
 impl UiProperties {
     fn new(settings: &Settings, factory: &mltg::Factory) -> Result<Self, Error> {
         let text_format = factory.create_text_format(
-            mltg::Font::System(&settings.appearance.font),
+            if settings.appearance.font.is_empty() {
+                mltg::Font::Memory(include_bytes!("../font/HackGen-Regular.ttf"), "HackGen")
+            } else {
+                mltg::Font::System(&settings.appearance.font)
+            },
             mltg::FontPoint(settings.appearance.font_size),
             None,
         )?;
