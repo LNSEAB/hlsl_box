@@ -2,10 +2,10 @@ name: Test
 on:
   pull_request:
     branches-ignore:
-      - 'readme'
-      - 'document'
-      - 'releases'
-      - 'releases-**'
+      - readme
+      - document
+      - releases
+      - releases-**
       - staging
   push:
     branches:
