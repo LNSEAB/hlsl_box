@@ -11,27 +11,6 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v3
-      - name: Load cache
-        uses: ./.github/actions/cache_cargo
-      - name: Toolchain
-        uses: actions-rs/toolchain@v1
-        with:
-          toolchain: stable
-          target: x86_64-pc-windows-msvc
-      - name: Cargo install
-        continue-on-error: true
-        uses: actions-rs/cargo@v1
-        with:
-          command: install
-          args: --locked cargo-about
-      - name: Build
-        shell: pwsh
-        run: ./script/package.ps1
-      - name: Test
-        uses: actions-rs/cargo@v1
-        with:
-          command: test
-          args: --profile production
       - name: Pull Request
         uses: bakunyo/git-pr-release-action@master
         env:
