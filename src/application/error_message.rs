@@ -12,15 +12,15 @@ enum TextColor {
 
 enum Layout {
     Text {
-        text: mltg::TextLayout,
+        layout: mltg::TextLayout,
         color: TextColor,
     },
-    Newline,
+    NewLine,
 }
 
 impl Layout {
     fn new_line_height(&self, h: f32) -> f32 {
-        matches!(self, Self::Newline).then(|| h).unwrap_or(0.0)
+        matches!(self, Self::NewLine).then(|| h).unwrap_or(0.0)
     }
 }
 
@@ -31,8 +31,7 @@ enum ScrollBarState {
     Moving,
 }
 
-static RE: Lazy<Regex> =
-    Lazy::new(|| Regex::new("(^.+:[0-9]+:[0-9]+: )(\\w+)(: )(.+)").unwrap());
+static RE: Lazy<Regex> = Lazy::new(|| Regex::new("(^.+:[0-9]+:[0-9]+: )(\\w+)(: )(.+)").unwrap());
 
 pub(super) struct ErrorMessage {
     path: PathBuf,
@@ -70,9 +69,9 @@ impl ErrorMessage {
         while index < this.text.len() && height < view_size.height {
             let mut buffer = Vec::new();
             this.parse_text(&mut buffer, &this.text[index], view_size)?;
-            height += buffer.iter().fold(0.0, |h, l| {
-                h + l.new_line_height(this.line_height)
-            });
+            height += buffer
+                .iter()
+                .fold(0.0, |h, l| h + l.new_line_height(this.line_height));
             this.layouts.push_back(buffer);
             index += 1;
         }
@@ -128,7 +127,9 @@ impl ErrorMessage {
                 > size.height
             {
                 let back = self.layouts.pop_back().unwrap();
-                height -= back.iter().fold(0.0, |h, l| h + l.new_line_height(self.line_height));
+                height -= back
+                    .iter()
+                    .fold(0.0, |h, l| h + l.new_line_height(self.line_height));
             }
         } else {
             if d < self.layouts.len() as _ {
@@ -145,7 +146,9 @@ impl ErrorMessage {
             while index < self.text.len() && height < size.height {
                 let mut buffer = Vec::new();
                 self.parse_text(&mut buffer, &self.text[index], size)?;
-                height += buffer.iter().fold(0.0, |h, l| h + l.new_line_height(self.line_height));
+                height += buffer
+                    .iter()
+                    .fold(0.0, |h, l| h + l.new_line_height(self.line_height));
                 self.layouts.push_back(buffer);
                 index += 1;
             }
@@ -221,7 +224,10 @@ impl ErrorMessage {
             let mut x = 0.0;
             for l in line {
                 match l {
-                    Layout::Text { text, color } => {
+                    Layout::Text {
+                        layout: text,
+                        color,
+                    } => {
                         let color = match color {
                             TextColor::Text => &self.ui_props.text_color,
                             TextColor::Error => &self.ui_props.error_label_color,
@@ -231,7 +237,7 @@ impl ErrorMessage {
                         cmd.draw_text_layout(text, color, [x, y]);
                         x += text.size().width;
                     }
-                    Layout::Newline => {
+                    Layout::NewLine => {
                         x = 0.0;
                         y += self.line_height;
                     }
@@ -271,7 +277,9 @@ impl ErrorMessage {
         while index < self.text.len() && height < view_size.height {
             let mut buffer = Vec::new();
             self.parse_text(&mut buffer, &self.text[index], view_size)?;
-            height += buffer.iter().fold(0.0, |h, l| h + l.new_line_height(self.line_height));
+            height += buffer
+                .iter()
+                .fold(0.0, |h, l| h + l.new_line_height(self.line_height));
             self.layouts.push_back(buffer);
             index += 1;
         }
@@ -293,14 +301,14 @@ impl ErrorMessage {
         text: &str,
         view_size: wita::LogicalSize<f32>,
     ) -> anyhow::Result<()> {
-        let mut x = 0.0;
         if let Some(m) = RE.captures(text) {
-            self.create_text_layouts(
+            let x = self.create_text_layouts(
                 buffer,
                 m.get(1).unwrap().as_str(),
                 view_size,
                 TextColor::Text,
-                &mut x,
+                0.0,
+                false,
             )?;
             let t = m.get(2).unwrap().as_str();
             let color = if t.starts_with("error") {
@@ -312,25 +320,27 @@ impl ErrorMessage {
             } else {
                 TextColor::Text
             };
-            self.create_text_layouts(buffer, t, view_size, color, &mut x)?;
-            self.create_text_layouts(
+            let x = self.create_text_layouts(buffer, t, view_size, color, x, true)?;
+            let x = self.create_text_layouts(
                 buffer,
                 m.get(3).unwrap().as_str(),
                 view_size,
                 TextColor::Text,
-                &mut x,
+                x,
+                true,
             )?;
             self.create_text_layouts(
                 buffer,
                 m.get(4).unwrap().as_str(),
                 view_size,
                 TextColor::Text,
-                &mut x,
+                x,
+                true,
             )?;
         } else {
-            self.create_text_layouts(buffer, text, view_size, TextColor::Text, &mut x)?;
+            self.create_text_layouts(buffer, text, view_size, TextColor::Text, 0.0, false)?;
         }
-        buffer.push(Layout::Newline);
+        buffer.push(Layout::NewLine);
         Ok(())
     }
 
@@ -340,55 +350,52 @@ impl ErrorMessage {
         text: &str,
         view_size: wita::LogicalSize<f32>,
         color: TextColor,
-        x: &mut f32,
-    ) -> Result<(), Error> {
-        let layout = self.ui_props.factory.create_text_layout(
-            text,
-            &self.ui_props.text_format,
-            mltg::TextAlignment::Leading,
-            None,
-        )?;
-        let test = layout.hit_test(mltg::point(
-            view_size.width - self.ui_props.scroll_bar.width - *x,
-            0.0,
-        ));
-        if !test.inside {
-            *x += layout.size().width;
-            v.push(Layout::Text { text: layout, color });
-            return Ok(());
-        }
-        if test.text_position == 0 {
-            *x = 0.0;
-            v.push(Layout::Newline);
-            return self.create_text_layouts(v, text, view_size, color, x);
-        }
+        x: f32,
+        per_word: bool,
+    ) -> Result<f32, Error> {
         let cs = text.chars().collect::<Vec<char>>();
-        let mut pos = test.text_position - 1;
-        let mut c = cs[pos];
-        if c.is_ascii() {
-            loop {
-                if pos == 0 || !c.is_ascii() || c == ' ' {
-                    break;
-                }
-                pos -= 1;
-                c = cs[pos];
+        let mut x = x;
+        let mut p = 0;
+        let factory = &self.ui_props.factory;
+        while p < text.len() {
+            let layout = factory.create_text_layout(
+                cs[p..].iter().collect::<String>(),
+                &self.ui_props.text_format,
+                mltg::TextAlignment::Leading,
+                None,
+            )?;
+            let hit_test = layout.hit_test(mltg::Point::new(
+                view_size.width - self.ui_props.scroll_bar.width - x,
+                0.0,
+            ));
+            if !hit_test.inside {
+                x += layout.size().width;
+                v.push(Layout::Text { layout, color });
+                break;
             }
+            let mut q = p + hit_test.text_position;
+            if per_word {
+                if p == q {
+                    v.push(Layout::NewLine);
+                    x = 0.0;
+                    continue;
+                }
+                while p < q && cs[q - 1].is_ascii() && cs[q - 1] != ' ' {
+                    q -= 1;
+                }
+            }
+            let s = cs[p..q].iter().collect::<String>();
+            let layout = factory.create_text_layout(
+                &s,
+                &self.ui_props.text_format,
+                mltg::TextAlignment::Leading,
+                None,
+            )?;
+            v.push(Layout::Text { layout, color });
+            v.push(Layout::NewLine);
+            p = q;
+            x = 0.0;
         }
-        let layout = self.ui_props.factory.create_text_layout(
-            &cs.iter().take(pos).collect::<String>(),
-            &self.ui_props.text_format,
-            mltg::TextAlignment::Leading,
-            None,
-        )?;
-        v.push(Layout::Text { text: layout, color });
-        v.push(Layout::Newline);
-        *x = 0.0;
-        self.create_text_layouts(
-            v,
-            &cs.iter().skip(pos).collect::<String>(),
-            view_size,
-            color,
-            x,
-        )
+        Ok(x)
     }
 }
