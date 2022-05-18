@@ -16,3 +16,5 @@ if (!$?) {
     exit 1
 }
 git push -u origin $branch
+git checkout $prev_branch
+git branch -D $branch
