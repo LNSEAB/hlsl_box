@@ -8,7 +8,7 @@ on:
     
 jobs:
   publish:
-    if: github.event.pull_request.merged == true && github.ref_name == 'staging'
+    if: github.event.pull_request.merged == true && github.head_ref == 'staging'
     runs-on: windows-2019
     steps:
       - name: Checkout
