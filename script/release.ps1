@@ -7,7 +7,7 @@ $branch = "staging"
 $prev_branch = git branch --contains | ForEach-Object {$($_ -split(" "))[1]}
 
 git checkout -b $branch
-cargo.exe release $Args[0]
+cargo.exe release $Args[0] --execute
 if ($?) {
     git checkout Cargo.lock
     git checkout Cargo.toml
