@@ -17,4 +17,3 @@ jobs:
         uses: bakunyo/git-pr-release-action@master
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GIT_PR_RELEASE_TITLE: ${{ github.event.head_commit.message }}
