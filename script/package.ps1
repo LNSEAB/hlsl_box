@@ -19,7 +19,7 @@ if (Test-Path -Path $dir) {
 New-Item $dir -ItemType Directory | Out-Null
 Write-Host "[package.ps1] create $dir"
 
-cargo.exe build --profile production
+Start-Process "pwsh.exe" -ArgumentList "-Command $root/build.ps1 production" -WorkingDirectory $root -NoNewWindow -Wait
 cargo.exe about generate about.hbs > "$dir/license.html"
 Copy-Item "$dxc_bin/dxcompiler.dll" $dir
 Copy-Item "$dxc_bin/dxil.dll" $dir

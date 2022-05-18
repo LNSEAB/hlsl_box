@@ -1,0 +1,23 @@
+name: ReleasePR
+
+on:
+  push:
+    branches:
+      - staging
+
+jobs:
+  release-pr:
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+      - name: Check if pr exists
+        id: check_pr
+        run: |
+          echo "::set-output name=count::$(gh pr list -H staging | wc -l)"
+      - name: Pull Request
+        if: ${{ steps.check_pr.outputs.count == 0 }}
+        run: |
+          gh pr create --title ${{ github.event.head_commit.message }} --body ""

@@ -1,14 +1,12 @@
-name: Test
+name: Package
+
 on:
   push:
-    branches-ignore:
-      - readme
-      - document
-      - releases
+    branches:
       - staging
 
 jobs:
-  test:
+  package:
     runs-on: windows-2019
     steps:
       - name: Checkout
@@ -20,20 +18,17 @@ jobs:
         with:
           toolchain: stable
           target: x86_64-pc-windows-msvc
-          components: rustfmt, clippy
-      - name: Format
+      - name: Cargo install
+        continue-on-error: true
         uses: actions-rs/cargo@v1
         with:
-          command: fmt
-          args: --all -- --check
-      - name: Clippy
-        uses: actions-rs/cargo@v1
-        with:
-          command: clippy
+          command: install
+          args: --locked cargo-about
       - name: Build
         shell: pwsh
-        run: ./script/build.ps1
+        run: ./script/package.ps1
       - name: Test
         uses: actions-rs/cargo@v1
         with:
           command: test
+          args: --profile production

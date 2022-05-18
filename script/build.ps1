@@ -8,6 +8,9 @@ Start-Process "pwsh.exe" -ArgumentList $dxc_args -WorkingDirectory $root -NoNewW
 if ($args.Contains("release")) {
     $target_dir = "$root/../target/release"
     cargo.exe build --release
+} elseif ($args.Contains("production")) {
+    $target_dir = "$root/../target/production"
+    cargo.exe build --profile production
 } else {
     $target_dir = "$root/../target/debug"
     cargo.exe build
