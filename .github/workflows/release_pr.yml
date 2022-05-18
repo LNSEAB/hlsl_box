@@ -15,4 +15,4 @@ jobs:
         uses: actions/checkout@v3
       - name: Pull Request
         run: |
-          gh pr create --title ${{ github.event.head_commit.message }}
+          gh pr create --title ${{ github.event.head_commit.message }} --body ""
