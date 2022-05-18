@@ -21,6 +21,7 @@ pub enum Method {
     ScreenShot,
     Play,
     Head,
+    Exit,
 }
 
 #[derive(Clone)]
@@ -432,6 +433,10 @@ impl Application {
                             if let State::Rendering(r) = &mut self.state {
                                 r.parameters.time = 0.0;
                             }
+                        }
+                        Method::Exit => {
+                            self.window_manager.main_window.close();
+                            break;
                         }
                     }
                 }
