@@ -1,10 +1,9 @@
 name: Package
 
 on:
-  pull_request:
+  push:
     branches:
       - staging
-    types: [opened, synchronize]
 
 jobs:
   package:
