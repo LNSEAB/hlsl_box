@@ -6,10 +6,9 @@ on:
       - master
     types: [closed]
     
-
 jobs:
   publish:
-    if:  github.event.pull_request.merged == true
+    if: github.event.pull_request.merged == true && github.ref_name == 'staging'
     runs-on: windows-2019
     steps:
       - name: Checkout
