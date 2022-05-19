@@ -49,6 +49,8 @@ static ENV_ARGS: Lazy<EnvArgs> = Lazy::new(|| {
 static EXE_DIR_PATH: Lazy<std::path::PathBuf> = Lazy::new(|| {
     std::env::current_exe()
         .unwrap()
+        .canonicalize()
+        .unwrap()
         .parent()
         .unwrap()
         .to_path_buf()

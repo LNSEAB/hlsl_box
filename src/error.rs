@@ -1,4 +1,5 @@
 use crate::*;
+use std::path::PathBuf;
 use windows::Win32::Graphics::Direct3D::Dxc::*;
 
 struct Messages {
@@ -50,8 +51,8 @@ pub enum Error {
     Deserialize(#[from] toml::de::Error),
     #[error("{0}")]
     Compile(String),
-    #[error("{}", MESSAGES.read_file)]
-    ReadFile,
+    #[error("{}({})", MESSAGES.read_file, .0.display())]
+    ReadFile(PathBuf),
     #[error("{}", MESSAGES.create_file)]
     CreateFile,
     #[error("{}", MESSAGES.file_too_large)]
