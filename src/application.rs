@@ -339,7 +339,10 @@ impl Application {
     }
 
     fn load_file(&mut self, path: &Path) -> Result<(), Error> {
-        assert!(path.is_file());
+        if !path.is_file() {
+            return Err(Error::ReadFile(path.into()));
+        }
+        let path = path.canonicalize().unwrap();
         let parent = path.parent().unwrap();
         let same_dir_monitor = self
             .hlsl_dir_monitor
@@ -350,7 +353,7 @@ impl Application {
             self.hlsl_dir_monitor = Some(DirMonitor::new(parent)?);
         }
         let blob = self.compiler.compile_from_file(
-            path,
+            &path,
             "main",
             hlsl::Target::PS(self.shader_model),
             &self.settings.shader.ps_args,
@@ -374,9 +377,12 @@ impl Application {
         }));
         self.play = self.settings.auto_play;
         self.timer = Timer::new();
-        self.window_manager
-            .main_window
-            .set_title(format!("{} {}", TITLE, path.display()));
+        let path_str = path.display().to_string();
+        self.window_manager.main_window.set_title(format!(
+            "{}   {}",
+            TITLE,
+            path_str.strip_prefix(r"\\?\").unwrap()
+        ));
         info!("load file: {}", path.display());
         Ok(())
     }

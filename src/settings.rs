@@ -97,12 +97,12 @@ impl Settings {
                 .map_err(|_| Error::CreateFile)?;
             info!("create \"settings.toml\"");
         }
-        let file = File::open(path).map_err(|_| Error::ReadFile)?;
+        let file = File::open(path).map_err(|_| Error::ReadFile(path.into()))?;
         let mut reader = BufReader::new(file);
         let mut buffer = String::new();
         reader
             .read_to_string(&mut buffer)
-            .map_err(|_| Error::ReadFile)?;
+            .map_err(|_| Error::ReadFile(path.into()))?;
         Ok(toml::from_str(&buffer)?)
     }
 

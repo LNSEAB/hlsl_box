@@ -246,12 +246,12 @@ impl Compiler {
     ) -> Result<Blob, Error> {
         let path = path.as_ref();
         let data = {
-            let file = File::open(path).map_err(|_| Error::ReadFile)?;
+            let file = File::open(path).map_err(|_| Error::ReadFile(path.into()))?;
             let mut reader = BufReader::new(file);
             let mut data = String::new();
             reader
                 .read_to_string(&mut data)
-                .map_err(|_| Error::ReadFile)?;
+                .map_err(|_| Error::ReadFile(path.into()))?;
             data
         };
         let (args, _tmp) = create_args(entry_point, target, path.to_str(), args);
