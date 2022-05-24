@@ -130,13 +130,9 @@ impl WindowHandler {
             ))
             .inner_size(wita::PhysicalSize::new(
                 window_setting.width,
-                settings.as_ref().map_or(
-                    window_setting.height,
-                    |settings| {
-                        window_setting.width * settings.resolution.height
-                            / settings.resolution.width
-                    },
-                ),
+                settings.as_ref().map_or(window_setting.height, |settings| {
+                    window_setting.width * settings.resolution.height / settings.resolution.width
+                }),
             ))
             .accept_drag_files(true)
             .build()

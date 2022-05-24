@@ -536,7 +536,7 @@ impl Application {
                     debug!("WindowEvent::Closed");
                     match window.save(&*WINDOW_SETTING_PATH) {
                         Ok(_) => info!("save window setting"),
-                        Err(e)  => error!("save window setting: {}", e),
+                        Err(e) => error!("save window setting: {}", e),
                     }
                     break;
                 }

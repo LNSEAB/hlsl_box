@@ -109,7 +109,10 @@ where
 
 impl Settings {
     pub fn load(path: impl AsRef<Path>) -> Result<Self, Error> {
-        Ok(toml::from_str(&load_file(path.as_ref(), &DEFAULT_SETTINGS)?)?)
+        Ok(toml::from_str(&load_file(
+            path.as_ref(),
+            &DEFAULT_SETTINGS,
+        )?)?)
     }
 
     pub fn save(&self, path: impl AsRef<Path>) -> Result<(), Error> {
