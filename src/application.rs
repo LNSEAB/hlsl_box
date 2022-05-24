@@ -268,7 +268,12 @@ pub struct Application {
 }
 
 impl Application {
-    pub fn new(settings: Settings, window_manager: WindowManager) -> anyhow::Result<Self> {
+    pub fn new(
+        src_settings: Result<Settings, Error>,
+        window_manager: WindowManager,
+    ) -> anyhow::Result<Self> {
+        let default_settings = Settings::default();
+        let settings = src_settings.as_ref().unwrap_or(&default_settings);
         let compiler = hlsl::Compiler::new()?;
         let debug_layer = ENV_ARGS.debuglayer;
         if debug_layer {
@@ -305,8 +310,21 @@ impl Application {
         let show_frame_counter = Rc::new(Cell::new(settings.frame_counter));
         let exe_dir_monitor = DirMonitor::new(&*EXE_DIR_PATH)?;
         let screen_shot = ScreenShot::new();
+        let state = match src_settings.as_ref() {
+            Ok(_) => State::Init,
+            Err(e) => State::Error(ErrorMessage::new(
+                SETTINGS_PATH.clone(),
+                e,
+                &ui_props,
+                window_manager
+                    .main_window
+                    .inner_size()
+                    .to_logical(window_manager.main_window.dpi())
+                    .cast(),
+            )?),
+        };
         let mut this = Self {
-            settings,
+            settings: src_settings.unwrap_or(default_settings),
             d3d12_device,
             window_manager,
             shader_model,
@@ -318,7 +336,7 @@ impl Application {
             timer: Timer::new(),
             exe_dir_monitor,
             hlsl_dir_monitor: None,
-            state: State::Init,
+            state,
             ui_props,
             show_frame_counter,
             screen_shot,
@@ -516,10 +534,9 @@ impl Application {
                 }
                 Some(WindowEvent::Closed(window)) => {
                     debug!("WindowEvent::Closed");
-                    self.settings.window = window;
-                    match self.settings.save(&*SETTINGS_PATH) {
-                        Ok(_) => info!("saved settings"),
-                        Err(e) => error!("save settings: {}", e),
+                    match window.save(&*WINDOW_SETTING_PATH) {
+                        Ok(_) => info!("save window setting"),
+                        Err(e)  => error!("save window setting: {}", e),
                     }
                     break;
                 }

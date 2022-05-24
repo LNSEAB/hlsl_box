@@ -57,6 +57,8 @@ static EXE_DIR_PATH: Lazy<std::path::PathBuf> = Lazy::new(|| {
 });
 
 static SETTINGS_PATH: Lazy<std::path::PathBuf> = Lazy::new(|| EXE_DIR_PATH.join("settings.toml"));
+static WINDOW_SETTING_PATH: Lazy<std::path::PathBuf> =
+    Lazy::new(|| EXE_DIR_PATH.join("window.toml"));
 static SCREEN_SHOT_PATH: Lazy<std::path::PathBuf> = Lazy::new(|| EXE_DIR_PATH.join("screenshot"));
 
 fn set_logger() {
@@ -144,8 +146,9 @@ fn main() {
     let th_handle = Rc::new(RefCell::new(None));
     let th_handle_f = th_handle.clone();
     let f = move || -> Result<WindowHandler, Error> {
-        let settings = Settings::load(&*SETTINGS_PATH)?;
+        let settings = Settings::load(&*SETTINGS_PATH);
         debug!("settings: {:?}", settings);
+        let window_setting = settings::Window::load(&*WINDOW_SETTING_PATH)?;
         let mut key_map = KeyboardMap::new();
         key_map.insert(
             vec![wita::VirtualKey::Ctrl, wita::VirtualKey::Char('O')],
@@ -162,7 +165,7 @@ fn main() {
             vec![wita::VirtualKey::Ctrl, wita::VirtualKey::Char('Q')],
             Method::Exit,
         );
-        let (window, window_manager) = WindowHandler::new(&settings, key_map);
+        let (window, window_manager) = WindowHandler::new(&settings, &window_setting, key_map);
         let th_settings = settings;
         let th = std::thread::spawn(move || {
             info!("start rendering thread");
@@ -183,7 +186,7 @@ fn main() {
         Ok(window)
     };
     if let Err(e) = wita::run(wita::RunType::Wait, f) {
-        error!("{}", e);
+        panic!("{}", e);
     }
     th_handle.borrow_mut().take().unwrap().join().unwrap();
     info!("end");

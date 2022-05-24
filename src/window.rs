@@ -117,27 +117,43 @@ pub struct WindowHandler {
 }
 
 impl WindowHandler {
-    pub fn new(settings: &Settings, key_map: KeyboardMap) -> (Self, WindowManager) {
+    pub fn new(
+        settings: &Result<Settings, Error>,
+        window_setting: &settings::Window,
+        key_map: KeyboardMap,
+    ) -> (Self, WindowManager) {
         let main_window = wita::Window::builder()
             .title(TITLE)
             .position(wita::ScreenPosition::new(
-                settings.window.x,
-                settings.window.y,
+                window_setting.x,
+                window_setting.y,
             ))
             .inner_size(wita::PhysicalSize::new(
-                settings.window.width,
-                settings.window.width * settings.resolution.height / settings.resolution.width,
+                window_setting.width,
+                settings.as_ref().map_or(
+                    window_setting.height,
+                    |settings| {
+                        window_setting.width * settings.resolution.height
+                            / settings.resolution.width
+                    },
+                ),
             ))
             .accept_drag_files(true)
             .build()
             .unwrap();
-        if settings.window.maximized {
+        if window_setting.maximized {
             main_window.maximize();
         }
         let (tx, rx) = mpsc::channel();
         let (sync_tx, sync_rx) = mpsc::sync_channel(0);
         let cursor_position = Arc::new(Mutex::new(wita::PhysicalPosition::new(0, 0)));
-        let resolution = Arc::new(Mutex::new(settings.resolution));
+        let resolution = Arc::new(Mutex::new(settings.as_ref().map_or_else(
+            |_| settings::Resolution {
+                width: 640,
+                height: 480,
+            },
+            |settings| settings.resolution,
+        )));
         (
             Self {
                 resolution: resolution.clone(),
