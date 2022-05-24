@@ -30,7 +30,9 @@ anyhow = { version = "1.0.57", features = ["backtrace"] }
 [dependencies.windows]
 version = "0.37.0"
 features = [
+    "alloc",
     "Win32_Foundation",
+    "Win32_Security",
     "Win32_Graphics_Direct3D",
     "Win32_Graphics_Dxgi",
     "Win32_Graphics_Dxgi_Common",
@@ -38,6 +40,8 @@ features = [
     "Win32_Graphics_Direct3D_Dxc",
     "Win32_Storage_FileSystem",
     "Win32_System_IO",
+    "Win32_System_Threading",
+    "Win32_System_WindowsProgramming",
     "Win32_UI_WindowsAndMessaging",
     "Win32_Globalization",
 ]
