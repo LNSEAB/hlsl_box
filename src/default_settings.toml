@@ -2,13 +2,6 @@ version = [1, 0]
 frame_counter = true
 auto_play = true
 
-[window]
-x = 0
-y = 0
-width = 1024
-height = 768
-maximized = false
-
 [resolution]
 width = 640 
 height = 480 

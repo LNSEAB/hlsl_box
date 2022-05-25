@@ -268,7 +268,12 @@ pub struct Application {
 }
 
 impl Application {
-    pub fn new(settings: Settings, window_manager: WindowManager) -> anyhow::Result<Self> {
+    pub fn new(
+        src_settings: Result<Settings, Error>,
+        window_manager: WindowManager,
+    ) -> anyhow::Result<Self> {
+        let default_settings = Settings::default();
+        let settings = src_settings.as_ref().unwrap_or(&default_settings);
         let compiler = hlsl::Compiler::new()?;
         let debug_layer = ENV_ARGS.debuglayer;
         if debug_layer {
@@ -301,12 +306,26 @@ impl Application {
             shader_model,
         )?;
         let factory = renderer.mltg_factory();
-        let ui_props = UiProperties::new(&settings, &factory)?;
+        let ui_props = UiProperties::new(settings, &factory)?;
         let show_frame_counter = Rc::new(Cell::new(settings.frame_counter));
         let exe_dir_monitor = DirMonitor::new(&*EXE_DIR_PATH)?;
         let screen_shot = ScreenShot::new();
+        let state = match src_settings.as_ref() {
+            Ok(_) => State::Init,
+            Err(e) => State::Error(ErrorMessage::new(
+                SETTINGS_PATH.clone(),
+                e,
+                &ui_props,
+                window_manager
+                    .main_window
+                    .inner_size()
+                    .to_logical(window_manager.main_window.dpi())
+                    .cast(),
+                None,
+            )?),
+        };
         let mut this = Self {
-            settings,
+            settings: src_settings.unwrap_or(default_settings),
             d3d12_device,
             window_manager,
             shader_model,
@@ -318,7 +337,7 @@ impl Application {
             timer: Timer::new(),
             exe_dir_monitor,
             hlsl_dir_monitor: None,
-            state: State::Init,
+            state,
             ui_props,
             show_frame_counter,
             screen_shot,
@@ -392,34 +411,44 @@ impl Application {
             if let Some(path) = self.exe_dir_monitor.try_recv() {
                 if path.as_path() == SETTINGS_PATH.as_path() {
                     self.reload_settings()?;
-                    info!("reload settings.toml");
                 }
             }
             let cursor_position = self.window_manager.get_cursor_position();
             match self.window_manager.try_recv() {
                 Some(WindowEvent::LoadFile(path)) => {
                     debug!("WindowEvent::LoadFile");
-                    if let Err(e) = self.load_file(&path) {
-                        self.set_error(&path, e)?;
+                    match &self.state {
+                        State::Error(e)
+                            if e.path() == *SETTINGS_PATH || e.path() == *WINDOW_SETTING_PATH => {}
+                        _ => {
+                            if let Err(e) = self.load_file(&path) {
+                                self.set_error(&path, e)?;
+                            }
+                        }
                     }
                 }
                 Some(WindowEvent::KeyInput(m)) => {
                     debug!("WindowEvent::KeyInput");
                     match m {
-                        Method::OpenDialog => {
-                            let dlg = ifdlg::FileOpenDialog::new();
-                            match dlg.show::<PathBuf>() {
-                                Ok(Some(path)) => {
-                                    if let Err(e) = self.load_file(&path) {
-                                        self.set_error(&path, e)?;
+                        Method::OpenDialog => match &mut self.state {
+                            State::Error(e)
+                                if e.path() == *SETTINGS_PATH
+                                    || e.path() == *WINDOW_SETTING_PATH => {}
+                            _ => {
+                                let dlg = ifdlg::FileOpenDialog::new();
+                                match dlg.show::<PathBuf>() {
+                                    Ok(Some(path)) => {
+                                        if let Err(e) = self.load_file(&path) {
+                                            self.set_error(&path, e)?;
+                                        }
                                     }
+                                    Err(e) => {
+                                        error!("open dialog: {}", e);
+                                    }
+                                    _ => {}
                                 }
-                                Err(e) => {
-                                    error!("open dialog: {}", e);
-                                }
-                                _ => {}
                             }
-                        }
+                        },
                         Method::FrameCounter => {
                             self.show_frame_counter.set(!self.show_frame_counter.get());
                         }
@@ -516,10 +545,9 @@ impl Application {
                 }
                 Some(WindowEvent::Closed(window)) => {
                     debug!("WindowEvent::Closed");
-                    self.settings.window = window;
-                    match self.settings.save(&*SETTINGS_PATH) {
-                        Ok(_) => info!("saved settings"),
-                        Err(e) => error!("save settings: {}", e),
+                    match window.save(&*WINDOW_SETTING_PATH) {
+                        Ok(_) => info!("save window setting"),
+                        Err(e) => error!("save window setting: {}", e),
                     }
                     break;
                 }
@@ -547,7 +575,10 @@ impl Application {
                         }
                     }
                     State::Error(e) => {
-                        if e.path() == path {
+                        if e.path() != *SETTINGS_PATH
+                            && e.path() != *WINDOW_SETTING_PATH
+                            && e.path() == path
+                        {
                             if let Err(e) = self.load_file(&path) {
                                 self.set_error(&path, e)?;
                             }
@@ -595,11 +626,17 @@ impl Application {
             .inner_size()
             .to_logical(dpi)
             .cast::<f32>();
+        let hlsl_path = match &self.state {
+            State::Rendering(r) => Some(r.path.clone()),
+            State::Error(e) => e.hlsl_path().cloned(),
+            _ => None,
+        };
         self.set_state(State::Error(ErrorMessage::new(
             path.to_path_buf(),
             &e,
             &self.ui_props,
             [size.width, size.height].into(),
+            hlsl_path,
         )?));
         error!("{}", e);
         Ok(())
@@ -611,7 +648,15 @@ impl Application {
     }
 
     fn reload_settings(&mut self) -> anyhow::Result<()> {
-        let settings = Settings::load(&*SETTINGS_PATH)?;
+        let settings = Settings::load(&*SETTINGS_PATH);
+        let settings = match settings {
+            Ok(settings) => settings,
+            Err(e) => {
+                self.set_error(&*SETTINGS_PATH, e)?;
+                return Ok(());
+            }
+        };
+        self.renderer.wait_all_signals();
         let shader_model =
             hlsl::ShaderModel::new(&self.d3d12_device, settings.shader.version.as_ref())?;
         let clear_color = [
@@ -639,6 +684,17 @@ impl Application {
                     settings.resolution.height as f32,
                 ];
             }
+            State::Error(em)
+                if em.path() == *SETTINGS_PATH || em.path() == *WINDOW_SETTING_PATH =>
+            {
+                if let Some(path) = em.hlsl_path().cloned() {
+                    if let Err(e) = self.load_file(&path) {
+                        self.set_error(&path, e)?;
+                    }
+                } else {
+                    self.set_state(State::Init);
+                }
+            }
             State::Error(em) => {
                 let dpi = self.window_manager.main_window.dpi();
                 let size = size.to_logical(dpi as _).cast::<f32>();
@@ -649,6 +705,7 @@ impl Application {
         self.settings = settings;
         self.ui_props = ui_props;
         self.clear_color = clear_color;
+        info!("reload settings.toml");
         Ok(())
     }
 }
