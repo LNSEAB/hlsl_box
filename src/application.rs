@@ -417,27 +417,38 @@ impl Application {
             match self.window_manager.try_recv() {
                 Some(WindowEvent::LoadFile(path)) => {
                     debug!("WindowEvent::LoadFile");
-                    if let Err(e) = self.load_file(&path) {
-                        self.set_error(&path, e)?;
+                    match &self.state {
+                        State::Error(e)
+                            if e.path() == *SETTINGS_PATH || e.path() == *WINDOW_SETTING_PATH => {}
+                        _ => {
+                            if let Err(e) = self.load_file(&path) {
+                                self.set_error(&path, e)?;
+                            }
+                        }
                     }
                 }
                 Some(WindowEvent::KeyInput(m)) => {
                     debug!("WindowEvent::KeyInput");
                     match m {
-                        Method::OpenDialog => {
-                            let dlg = ifdlg::FileOpenDialog::new();
-                            match dlg.show::<PathBuf>() {
-                                Ok(Some(path)) => {
-                                    if let Err(e) = self.load_file(&path) {
-                                        self.set_error(&path, e)?;
+                        Method::OpenDialog => match &mut self.state {
+                            State::Error(e)
+                                if e.path() == *SETTINGS_PATH
+                                    || e.path() == *WINDOW_SETTING_PATH => {}
+                            _ => {
+                                let dlg = ifdlg::FileOpenDialog::new();
+                                match dlg.show::<PathBuf>() {
+                                    Ok(Some(path)) => {
+                                        if let Err(e) = self.load_file(&path) {
+                                            self.set_error(&path, e)?;
+                                        }
                                     }
+                                    Err(e) => {
+                                        error!("open dialog: {}", e);
+                                    }
+                                    _ => {}
                                 }
-                                Err(e) => {
-                                    error!("open dialog: {}", e);
-                                }
-                                _ => {}
                             }
-                        }
+                        },
                         Method::FrameCounter => {
                             self.show_frame_counter.set(!self.show_frame_counter.get());
                         }
