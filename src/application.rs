@@ -410,7 +410,6 @@ impl Application {
             if let Some(path) = self.exe_dir_monitor.try_recv() {
                 if path.as_path() == SETTINGS_PATH.as_path() {
                     self.reload_settings()?;
-                    info!("reload settings.toml");
                 }
             }
             let cursor_position = self.window_manager.get_cursor_position();
@@ -564,7 +563,10 @@ impl Application {
                         }
                     }
                     State::Error(e) => {
-                        if e.path() == path {
+                        if e.path() != &*SETTINGS_PATH
+                            && e.path() != &*WINDOW_SETTING_PATH
+                            && e.path() == path
+                        {
                             if let Err(e) = self.load_file(&path) {
                                 self.set_error(&path, e)?;
                             }
@@ -628,7 +630,15 @@ impl Application {
     }
 
     fn reload_settings(&mut self) -> anyhow::Result<()> {
-        let settings = Settings::load(&*SETTINGS_PATH)?;
+        let settings = Settings::load(&*SETTINGS_PATH);
+        let settings = match settings {
+            Ok(settings) => settings,
+            Err(e) => {
+                self.set_error(&*SETTINGS_PATH, e)?;
+                return Ok(());
+            }
+        };
+        self.renderer.wait_all_signals();
         let shader_model =
             hlsl::ShaderModel::new(&self.d3d12_device, settings.shader.version.as_ref())?;
         let clear_color = [
@@ -656,6 +666,11 @@ impl Application {
                     settings.resolution.height as f32,
                 ];
             }
+            State::Error(em)
+                if em.path() == &*SETTINGS_PATH || em.path() == &*WINDOW_SETTING_PATH =>
+            {
+                self.state = State::Init;
+            }
             State::Error(em) => {
                 let dpi = self.window_manager.main_window.dpi();
                 let size = size.to_logical(dpi as _).cast::<f32>();
@@ -666,6 +681,7 @@ impl Application {
         self.settings = settings;
         self.ui_props = ui_props;
         self.clear_color = clear_color;
+        info!("reload settings.toml");
         Ok(())
     }
 }

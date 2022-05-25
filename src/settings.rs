@@ -114,10 +114,6 @@ impl Settings {
             &DEFAULT_SETTINGS,
         )?)?)
     }
-
-    pub fn save(&self, path: impl AsRef<Path>) -> Result<(), Error> {
-        save_file(path.as_ref(), self)
-    }
 }
 
 impl Default for Settings {
@@ -158,5 +154,10 @@ mod tests {
     #[test]
     fn default_settings() {
         Settings::default();
+    }
+
+    #[test]
+    fn default_window_setting() {
+        Window::default();
     }
 }

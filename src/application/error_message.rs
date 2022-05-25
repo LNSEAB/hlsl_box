@@ -52,7 +52,11 @@ impl ErrorMessage {
         ui_props: &UiProperties,
         view_size: wita::LogicalSize<f32>,
     ) -> anyhow::Result<Self> {
-        let text = format!("{}", e);
+        let text = if &path == &*SETTINGS_PATH || &path == &*WINDOW_SETTING_PATH {
+            format!("{}:\n{}", path.display(), e)
+        } else {
+            format!("{}", e)
+        };
         let text = text.split('\n').map(|t| t.to_string()).collect::<Vec<_>>();
         let layouts = VecDeque::new();
         let mut this = Self {
