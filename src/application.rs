@@ -321,6 +321,7 @@ impl Application {
                     .inner_size()
                     .to_logical(window_manager.main_window.dpi())
                     .cast(),
+                None,
             )?),
         };
         let mut this = Self {
@@ -614,11 +615,17 @@ impl Application {
             .inner_size()
             .to_logical(dpi)
             .cast::<f32>();
+        let hlsl_path = match &self.state {
+            State::Rendering(r) => Some(r.path.clone()),
+            State::Error(e) => e.hlsl_path().cloned(),
+            _ => None,
+        };
         self.set_state(State::Error(ErrorMessage::new(
             path.to_path_buf(),
             &e,
             &self.ui_props,
             [size.width, size.height].into(),
+            hlsl_path,
         )?));
         error!("{}", e);
         Ok(())
@@ -669,7 +676,13 @@ impl Application {
             State::Error(em)
                 if em.path() == &*SETTINGS_PATH || em.path() == &*WINDOW_SETTING_PATH =>
             {
-                self.state = State::Init;
+                if let Some(path) = em.hlsl_path().cloned() {
+                    if let Err(e) = self.load_file(&path) {
+                        self.set_error(&path, e)?;
+                    }
+                } else {
+                    self.set_state(State::Init);
+                }
             }
             State::Error(em) => {
                 let dpi = self.window_manager.main_window.dpi();

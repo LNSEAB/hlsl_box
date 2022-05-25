@@ -43,6 +43,7 @@ pub(super) struct ErrorMessage {
     scroll_bar_state: ScrollBarState,
     dy: f32,
     line_height: f32,
+    hlsl_path: Option<PathBuf>,
 }
 
 impl ErrorMessage {
@@ -51,6 +52,7 @@ impl ErrorMessage {
         e: &Error,
         ui_props: &UiProperties,
         view_size: wita::LogicalSize<f32>,
+        hlsl_path: Option<PathBuf>,
     ) -> anyhow::Result<Self> {
         let text = if &path == &*SETTINGS_PATH || &path == &*WINDOW_SETTING_PATH {
             format!("{}:\n{}", path.display(), e)
@@ -68,6 +70,7 @@ impl ErrorMessage {
             scroll_bar_state: ScrollBarState::None,
             dy: 0.0,
             line_height: ui_props.line_height,
+            hlsl_path,
         };
         let mut index = 0;
         let mut height = 0.0;
@@ -85,6 +88,10 @@ impl ErrorMessage {
 
     pub fn path(&self) -> &Path {
         &self.path
+    }
+
+    pub fn hlsl_path(&self) -> Option<&PathBuf> {
+        self.hlsl_path.as_ref()
     }
 
     pub fn offset(&mut self, view_size: wita::LogicalSize<f32>, d: i32) -> anyhow::Result<()> {
