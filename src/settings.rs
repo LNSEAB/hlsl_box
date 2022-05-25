@@ -111,7 +111,7 @@ impl Settings {
     pub fn load(path: impl AsRef<Path>) -> Result<Self, Error> {
         Ok(toml::from_str(&load_file(
             path.as_ref(),
-            &DEFAULT_SETTINGS,
+            DEFAULT_SETTINGS,
         )?)?)
     }
 }
@@ -133,7 +133,7 @@ pub struct Window {
 
 impl Window {
     pub fn load(path: impl AsRef<Path>) -> Result<Self, Error> {
-        Ok(toml::from_str(&load_file(path.as_ref(), &DEFAULT_WINDOW)?)?)
+        Ok(toml::from_str(&load_file(path.as_ref(), DEFAULT_WINDOW)?)?)
     }
 
     pub fn save(&self, path: impl AsRef<Path>) -> Result<(), Error> {

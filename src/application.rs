@@ -306,7 +306,7 @@ impl Application {
             shader_model,
         )?;
         let factory = renderer.mltg_factory();
-        let ui_props = UiProperties::new(&settings, &factory)?;
+        let ui_props = UiProperties::new(settings, &factory)?;
         let show_frame_counter = Rc::new(Cell::new(settings.frame_counter));
         let exe_dir_monitor = DirMonitor::new(&*EXE_DIR_PATH)?;
         let screen_shot = ScreenShot::new();
@@ -564,8 +564,8 @@ impl Application {
                         }
                     }
                     State::Error(e) => {
-                        if e.path() != &*SETTINGS_PATH
-                            && e.path() != &*WINDOW_SETTING_PATH
+                        if e.path() != *SETTINGS_PATH
+                            && e.path() != *WINDOW_SETTING_PATH
                             && e.path() == path
                         {
                             if let Err(e) = self.load_file(&path) {
@@ -674,7 +674,7 @@ impl Application {
                 ];
             }
             State::Error(em)
-                if em.path() == &*SETTINGS_PATH || em.path() == &*WINDOW_SETTING_PATH =>
+                if em.path() == *SETTINGS_PATH || em.path() == *WINDOW_SETTING_PATH =>
             {
                 if let Some(path) = em.hlsl_path().cloned() {
                     if let Err(e) = self.load_file(&path) {

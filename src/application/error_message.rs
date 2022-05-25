@@ -54,7 +54,7 @@ impl ErrorMessage {
         view_size: wita::LogicalSize<f32>,
         hlsl_path: Option<PathBuf>,
     ) -> anyhow::Result<Self> {
-        let text = if &path == &*SETTINGS_PATH || &path == &*WINDOW_SETTING_PATH {
+        let text = if path == *SETTINGS_PATH || path == *WINDOW_SETTING_PATH {
             format!("{}:\n{}", path.display(), e)
         } else {
             format!("{}", e)
