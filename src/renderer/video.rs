@@ -1,6 +1,6 @@
 use super::*;
 use std::path::Path;
-use std::sync::mpsc;
+use std::sync::{mpsc, Arc, Mutex, MutexGuard};
 use windows::Win32::Media::MediaFoundation::*;
 
 const MF_VERSION: u32 = (MF_SDK_VERSION << 16) | 0x0070;
@@ -128,11 +128,14 @@ unsafe impl Send for Writer {}
 struct Worker {
     th: Option<std::thread::JoinHandle<()>>,
     tx: Option<mpsc::Sender<(ReadBackBuffer, Signal)>>,
+    mtx: Arc<Mutex<()>>,
 }
 
 impl Worker {
     fn new(writer: Writer, end_frame: u64) -> Self {
         let (tx, rx) = mpsc::channel::<(ReadBackBuffer, Signal)>();
+        let mtx = Arc::new(Mutex::new(()));
+        let mutex = mtx.clone();
         let th = std::thread::spawn(move || {
             let mut frame = 0;
             loop {
@@ -146,16 +149,20 @@ impl Worker {
                         break;
                     }
                 };
-                if let Err(e) = signal.wait() {
-                    error!("Video::worker: {}", e);
-                    break;
-                }
-                let img = match buffer.to_image() {
-                    Ok(img) => img,
-                    Err(e) => {
+                let img = {
+                    let m = mutex.lock().unwrap();
+                    if let Err(e) = signal.wait() {
                         error!("Video::worker: {}", e);
                         break;
                     }
+                    let img = match buffer.to_image() {
+                        Ok(img) => img,
+                        Err(e) => {
+                            error!("Video::worker: {}", e);
+                            break;
+                        }
+                    };
+                    img
                 };
                 if let Err(e) = writer.write(&img, frame) {
                     error!("Video::worker: {}", e);
@@ -174,6 +181,7 @@ impl Worker {
         Self {
             th: Some(th),
             tx: Some(tx),
+            mtx,
         }
     }
 }
@@ -232,5 +240,13 @@ impl Video {
             }
         }
         Ok(())
+    }
+
+    pub fn lock(&self) -> Option<MutexGuard<()>> {
+        if self.is_writing() {
+            Some(self.worker.as_ref().unwrap().mtx.lock().unwrap())
+        } else {
+            None
+        }
     }
 }

@@ -376,6 +376,7 @@ impl Renderer {
     }
 
     pub fn screen_shot(&self) -> anyhow::Result<Option<image::RgbaImage>> {
+        let _lock = self.video.lock();
         let frame = self.signals.last_frame();
         if frame.is_none() {
             return Ok(None);
