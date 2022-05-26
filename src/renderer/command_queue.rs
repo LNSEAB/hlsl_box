@@ -29,6 +29,8 @@ impl Signal {
     }
 }
 
+unsafe impl Send for Signal {}
+
 pub struct Signals {
     signals: RefCell<Vec<Option<Signal>>>,
     event: Event,

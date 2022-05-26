@@ -7,6 +7,7 @@ mod plane;
 mod swap_chain;
 mod ui;
 mod utility;
+mod video;
 
 use crate::*;
 use std::cell::{Cell, RefCell};
@@ -215,10 +216,7 @@ pub struct Renderer {
     filling_plane: plane::Buffer,
     adjusted_plane: plane::Buffer,
     read_back_buffer: ReadBackBuffer,
-    video_context: video::Context,
-    video_writer: RefCell<Option<video::Writer>>,
-    video_frame: Cell<u64>,
-    video_end_frame: u64,
+    video: video::Video,
 }
 
 impl Renderer {
@@ -265,7 +263,7 @@ impl Renderer {
             )?;
             let signals = Signals::new(cmd_allocators.len());
             let read_back_buffer = ReadBackBuffer::new(d3d12_device, resolution)?;
-            let video_context = video::Context::new()?;
+            let video = video::Video::new()?;
             Ok(Self {
                 d3d12_device: d3d12_device.clone(),
                 swap_chain,
@@ -280,10 +278,7 @@ impl Renderer {
                 filling_plane,
                 adjusted_plane,
                 read_back_buffer,
-                video_context,
-                video_writer: RefCell::new(None),
-                video_frame: Cell::new(0),
-                video_end_frame: 0,
+                video,
             })
         }
     }
@@ -334,32 +329,26 @@ impl Renderer {
             cmd.layer(&ps_result, &back_buffer, &self.adjusted_plane);
         })?;
         let main_signal = self.main_queue.execute([cmd_list])?;
-        if let Some(writer) = self.video_writer.borrow().as_ref() {
-            if index % 2 == 0 {
-                let cmd_list = CopyCommandList::new(
-                    "Renderer::render write video",
-                    &self.d3d12_device,
-                    &self.cmd_allocators[Self::COPY_ALLOCATOR],
-                )?;
-                let src = self.render_target.copy_resource(index);
-                cmd_list.record(
-                    &self.cmd_allocators[Self::COPY_ALLOCATOR],
-                    |cmd: CopyCommand<CopyResource, ReadBackBuffer>| {
-                        cmd.barrier([src.enter()]);
-                        cmd.copy(&src, &self.read_back_buffer);
-                        cmd.barrier([src.leave()]);
-                    },
-                )?;
-                self.copy_queue.wait(&main_signal)?;
-                self.copy_queue.execute([&cmd_list])?.wait()?;
-                let img = self.read_back_buffer.to_image()?;
-                writer.write(&img, self.video_frame.get() * 10_000_000 / 30)?;
-                self.video_frame.set(self.video_frame.get() + 1);
-            }
-        }
-        if self.video_frame.get() == self.video_end_frame {
-            *self.video_writer.borrow_mut() = None;
-            self.video_frame.set(0);
+        let mut copy_signal = None;
+        if index % 2 == 0 && self.video.is_writing() {
+            let cmd_list = CopyCommandList::new(
+                "Renderer::render write video",
+                &self.d3d12_device,
+                &self.cmd_allocators[Self::COPY_ALLOCATOR],
+            )?;
+            let src = self.render_target.copy_resource(index);
+            cmd_list.record(
+                &self.cmd_allocators[Self::COPY_ALLOCATOR],
+                |cmd: CopyCommand<CopyResource, ReadBackBuffer>| {
+                    cmd.barrier([src.enter()]);
+                    cmd.copy(&src, &self.read_back_buffer);
+                    cmd.barrier([src.leave()]);
+                },
+            )?;
+            self.copy_queue.wait(&main_signal)?;
+            let signal = self.copy_queue.execute([&cmd_list])?;
+            copy_signal = Some(signal.clone());
+            self.video.write(self.read_back_buffer.clone(), signal)?;
         }
         cmd_list.record(&cmd_allocators[1], |cmd| {
             cmd.barrier([ui_buffer.enter()]);
@@ -370,6 +359,9 @@ impl Renderer {
         self.main_queue.wait(&ui_signal)?;
         self.main_queue.execute([cmd_list])?;
         let signal = self.main_queue.present(interval)?;
+        if let Some(copy_signal) = copy_signal.as_ref() {
+            self.main_queue.wait(copy_signal)?;
+        }
         self.signals.set(index, signal);
         Ok(())
     }
@@ -379,12 +371,8 @@ impl Renderer {
     }
 
     pub fn record_video(&mut self, path: impl AsRef<Path>, end_frame: u64) -> anyhow::Result<()> {
-        let writer =
-            self.video_context
-                .create_writer(path, self.render_target.size(), 30, 1_500_000)?;
-        *self.video_writer.borrow_mut() = Some(writer);
-        self.video_end_frame = end_frame;
-        Ok(())
+        self.video
+            .start(path, self.render_target.size(), 30, 1_500_000, end_frame)
     }
 
     pub fn screen_shot(&self) -> anyhow::Result<Option<image::RgbaImage>> {
