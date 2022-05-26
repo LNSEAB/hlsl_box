@@ -265,6 +265,7 @@ pub struct Application {
     ui_props: UiProperties,
     show_frame_counter: Rc<Cell<bool>>,
     screen_shot: ScreenShot,
+    video_context: video::Context,
 }
 
 impl Application {
@@ -341,6 +342,7 @@ impl Application {
             ui_props,
             show_frame_counter,
             screen_shot,
+            video_context: video::Context::new()?,
         };
         if let Some(path) = ENV_ARGS.input_file.as_ref().map(Path::new) {
             if let Err(e) = this.load_file(path) {

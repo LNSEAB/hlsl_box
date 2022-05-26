@@ -6,6 +6,7 @@ mod hlsl;
 mod monitor;
 mod renderer;
 mod settings;
+mod video;
 mod window;
 
 use once_cell::sync::Lazy;
