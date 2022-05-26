@@ -163,6 +163,10 @@ fn main() {
         key_map.insert(vec![wita::VirtualKey::Space], Method::Play);
         key_map.insert(vec![wita::VirtualKey::Char('R')], Method::Head);
         key_map.insert(
+            vec![wita::VirtualKey::Ctrl, wita::VirtualKey::Char('V')],
+            Method::RecordVideo,
+        );
+        key_map.insert(
             vec![wita::VirtualKey::Ctrl, wita::VirtualKey::Char('Q')],
             Method::Exit,
         );

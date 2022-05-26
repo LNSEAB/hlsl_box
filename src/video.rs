@@ -20,7 +20,7 @@ impl Context {
         resolution: wita::PhysicalSize<u32>,
         fps: u32,
         bit_rate: u32,
-    ) -> anyhow::Result<Writer<'_>> {
+    ) -> anyhow::Result<Writer> {
         unsafe {
             let handle = MFCreateSinkWriterFromURL(path.as_ref().to_str().unwrap(), None, None)?;
             Writer::new(handle, resolution, fps, bit_rate)
@@ -38,16 +38,20 @@ impl Drop for Context {
     }
 }
 
-pub struct Writer<'a> {
+pub struct Writer {
     handle: IMFSinkWriter,
     resolution: wita::PhysicalSize<u32>,
     fps: u32,
     stream_index: u32,
-    _lifetime: std::marker::PhantomData<&'a ()>,
 }
 
-impl<'a> Writer<'a> {
-    fn new(handle: IMFSinkWriter, resolution: wita::PhysicalSize<u32>, fps: u32, bit_rate: u32) -> anyhow::Result<Self> {
+impl Writer {
+    fn new(
+        handle: IMFSinkWriter,
+        resolution: wita::PhysicalSize<u32>,
+        fps: u32,
+        bit_rate: u32,
+    ) -> anyhow::Result<Self> {
         unsafe {
             let out_type = MFCreateMediaType()?;
             out_type.SetGUID(&MF_MT_MAJOR_TYPE, &MFMediaType_Video)?;
@@ -78,7 +82,6 @@ impl<'a> Writer<'a> {
                 resolution,
                 fps,
                 stream_index,
-                _lifetime: std::marker::PhantomData,
             })
         }
     }
@@ -112,11 +115,14 @@ impl<'a> Writer<'a> {
     }
 }
 
-impl<'a> Drop for Writer<'a> {
+impl Drop for Writer {
     fn drop(&mut self) {
         unsafe {
+            debug!("Writer::drop");
             if let Err(e) = self.handle.Finalize() {
                 error!("Finalize: {}", e);
+            } else {
+                info!("Writer Finalize finished");
             }
         }
     }
