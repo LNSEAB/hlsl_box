@@ -150,7 +150,7 @@ impl Worker {
                     }
                 };
                 let img = {
-                    let m = mutex.lock().unwrap();
+                    let _lock = mutex.lock().unwrap();
                     if let Err(e) = signal.wait() {
                         error!("Video::worker: {}", e);
                         break;
