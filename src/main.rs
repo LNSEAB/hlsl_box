@@ -60,6 +60,7 @@ static SETTINGS_PATH: Lazy<std::path::PathBuf> = Lazy::new(|| EXE_DIR_PATH.join(
 static WINDOW_SETTING_PATH: Lazy<std::path::PathBuf> =
     Lazy::new(|| EXE_DIR_PATH.join("window.toml"));
 static SCREEN_SHOT_PATH: Lazy<std::path::PathBuf> = Lazy::new(|| EXE_DIR_PATH.join("screenshot"));
+static VIDEO_PATH: Lazy<std::path::PathBuf> = Lazy::new(|| EXE_DIR_PATH.join("video"));
 
 fn set_logger() {
     use std::fs::File;

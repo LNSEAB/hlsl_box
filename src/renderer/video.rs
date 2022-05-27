@@ -132,7 +132,7 @@ struct Worker {
 }
 
 impl Worker {
-    fn new(writer: Writer, end_frame: u64) -> Self {
+    fn new(writer: Writer, end_frame: Option<u64>) -> Self {
         let (tx, rx) = mpsc::channel::<(ReadBackBuffer, Signal)>();
         let mtx = Arc::new(Mutex::new(()));
         let mutex = mtx.clone();
@@ -169,7 +169,7 @@ impl Worker {
                     break;
                 }
                 frame += 1;
-                if frame == end_frame {
+                if end_frame.map_or(false, |ef| frame >= ef) {
                     match writer.finalize() {
                         Ok(_) => info!("Video::worker: finalized"),
                         Err(e) => error!("Video::worker: {}", e),
@@ -218,7 +218,7 @@ impl Video {
         resolution: wita::PhysicalSize<u32>,
         fps: u32,
         bit_rate: u32,
-        end_frame: u64,
+        end_frame: Option<u64>,
     ) -> anyhow::Result<()> {
         self.worker = Some(Worker::new(
             self.context
@@ -240,6 +240,10 @@ impl Video {
             }
         }
         Ok(())
+    }
+
+    pub fn stop(&mut self) {
+        self.worker = None;
     }
 
     pub fn lock(&self) -> Option<MutexGuard<()>> {

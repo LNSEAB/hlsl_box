@@ -45,6 +45,12 @@ pub struct Shader {
 }
 
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+pub struct Video {
+    pub frame_rate: u32,
+    pub end_frame: u64,
+}
+
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct ScrollBar {
     pub width: f32,
     pub bg_color: [f32; 4],
@@ -74,6 +80,7 @@ pub struct Settings {
     pub auto_play: bool,
     pub resolution: Resolution,
     pub shader: Shader,
+    pub video: Video,
     pub appearance: Appearance,
 }
 

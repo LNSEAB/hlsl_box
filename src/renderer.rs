@@ -370,9 +370,27 @@ impl Renderer {
         self.signals.wait_all();
     }
 
-    pub fn record_video(&mut self, path: impl AsRef<Path>, end_frame: u64) -> anyhow::Result<()> {
-        self.video
-            .start(path, self.render_target.size(), 30, 1_500_000, end_frame)
+    pub fn start_video(
+        &mut self,
+        path: impl AsRef<Path>,
+        frame_rate: u32,
+        end_frame: Option<u64>,
+    ) -> anyhow::Result<()> {
+        self.video.start(
+            path,
+            self.render_target.size(),
+            frame_rate,
+            1_500_000,
+            end_frame,
+        )
+    }
+
+    pub fn is_writing_video(&self) -> bool {
+        self.video.is_writing()
+    }
+
+    pub fn stop_video(&mut self) {
+        self.video.stop();
     }
 
     pub fn screen_shot(&self) -> anyhow::Result<Option<image::RgbaImage>> {

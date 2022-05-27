@@ -170,18 +170,18 @@ impl Timer {
     }
 }
 
-struct ScreenShot {
-    date: chrono::Date<chrono::Local>,
-    count: u64,
-    th: Option<std::thread::JoinHandle<()>>,
-    tx: Option<mpsc::Sender<(image::RgbaImage, PathBuf)>>,
+struct FileNameGenerator {
+    dir: PathBuf,
+    date: RefCell<chrono::Date<chrono::Local>>,
+    count: Cell<u64>,
 }
 
-impl ScreenShot {
-    fn new() -> Self {
+impl FileNameGenerator {
+    fn new(dir: impl AsRef<Path>) -> Self {
+        let dir = dir.as_ref();
         let date = chrono::Local::today();
-        let date_str = format!("{}", date);
         let read_dir = |dir: std::fs::ReadDir| {
+            let date_str = format!("{}", date);
             dir.flatten()
                 .filter_map(|entry| {
                     entry
@@ -192,11 +192,41 @@ impl ScreenShot {
                 })
                 .max()
         };
-        let count = SCREEN_SHOT_PATH
-            .read_dir()
-            .ok()
-            .and_then(read_dir)
-            .unwrap_or(1);
+        let count = dir.read_dir().ok().and_then(read_dir).unwrap_or(1);
+        Self {
+            dir: dir.to_path_buf(),
+            date: RefCell::new(date),
+            count: Cell::new(count),
+        }
+    }
+
+    fn get(&self, ext: &str) -> PathBuf {
+        let date = chrono::Local::today();
+        if date != *self.date.borrow() {
+            *self.date.borrow_mut() = date;
+            self.count.set(1);
+        }
+        let path = loop {
+            let file_name = format!("{}-{}.{}", date.format("%Y-%m-%d"), self.count.get(), ext);
+            let path = self.dir.join(file_name);
+            if !path.is_file() {
+                break path;
+            }
+            self.count.set(self.count.get() + 1);
+        };
+        self.count.set(self.count.get() + 1);
+        path
+    }
+}
+
+struct ScreenShot {
+    th: Option<std::thread::JoinHandle<()>>,
+    tx: Option<mpsc::Sender<(image::RgbaImage, PathBuf)>>,
+    file_name_gen: FileNameGenerator,
+}
+
+impl ScreenShot {
+    fn new() -> Self {
         let (tx, rx) = mpsc::channel::<(image::RgbaImage, PathBuf)>();
         let th = std::thread::spawn(move || {
             while let Ok((img, path)) = rx.recv() {
@@ -206,15 +236,15 @@ impl ScreenShot {
                 }
             }
         });
+        let file_name = FileNameGenerator::new(&*SCREEN_SHOT_PATH);
         Self {
-            date,
-            count,
             th: Some(th),
             tx: Some(tx),
+            file_name_gen: file_name,
         }
     }
 
-    fn save(&mut self, renderer: &Renderer) -> anyhow::Result<()> {
+    fn save(&self, renderer: &Renderer) -> anyhow::Result<()> {
         if !SCREEN_SHOT_PATH.is_dir() {
             std::fs::create_dir(&*SCREEN_SHOT_PATH).unwrap();
         }
@@ -223,21 +253,8 @@ impl ScreenShot {
             return Ok(());
         }
         let img = img.unwrap();
-        let date = chrono::Local::today();
-        if date != self.date {
-            self.date = date;
-            self.count = 1;
-        }
-        let path = loop {
-            let file_name = format!("{}-{}.png", date.format("%Y-%m-%d"), self.count);
-            let path = SCREEN_SHOT_PATH.join(file_name);
-            if !path.is_file() {
-                break path;
-            }
-            self.count += 1;
-        };
+        let path = self.file_name_gen.get("png");
         self.tx.as_ref().unwrap().send((img, path)).ok();
-        self.count += 1;
         Ok(())
     }
 }
@@ -266,6 +283,7 @@ pub struct Application {
     ui_props: UiProperties,
     show_frame_counter: Rc<Cell<bool>>,
     screen_shot: ScreenShot,
+    video_file_gen: FileNameGenerator,
 }
 
 impl Application {
@@ -342,6 +360,7 @@ impl Application {
             ui_props,
             show_frame_counter,
             screen_shot,
+            video_file_gen: FileNameGenerator::new(&*VIDEO_PATH),
         };
         if let Some(path) = ENV_ARGS.input_file.as_ref().map(Path::new) {
             if let Err(e) = this.load_file(path) {
@@ -471,13 +490,27 @@ impl Application {
                             }
                         }
                         Method::RecordVideo => {
-                            info!("record video start");
+                            if !VIDEO_PATH.is_dir() {
+                                std::fs::create_dir(&*VIDEO_PATH).unwrap();
+                            }
                             self.timer = Timer::new();
                             if let State::Rendering(r) = &mut self.state {
                                 r.parameters.time = 0.0;
                             }
-                            if let Err(e) = self.renderer.record_video("video.mp4", 30 * 3) {
-                                error!("record_video: {}", e);
+                            if self.renderer.is_writing_video() {
+                                info!("record video stop");
+                                self.renderer.stop_video();
+                            } else {
+                                info!("record video start");
+                                let frame_rate = self.settings.video.frame_rate;
+                                let end_frame =
+                                    Some(self.settings.video.end_frame).filter(|i| *i > 0);
+                                if let Err(e) =
+                                    self.renderer
+                                        .start_video(self.video_file_gen.get(".mp4"), frame_rate, end_frame)
+                                {
+                                    error!("record_video: {}", e);
+                                }
                             }
                         }
                         Method::Exit => {
@@ -718,5 +751,26 @@ impl Application {
         self.clear_color = clear_color;
         info!("reload settings.toml");
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn file_name_generator_test() {
+        let dir = Path::new("target/dummy/file_name_generator_test");
+        let gen = FileNameGenerator::new(dir);
+        let date = chrono::Local::today();
+        let ret = gen.get("png");
+        assert!(ret == dir.join(&format!("{}-1.png", date.format("%Y-%m-%d"))));
+        let ret = gen.get("png");
+        assert!(ret == dir.join(&format!("{}-2.png", date.format("%Y-%m-%d"))));
+        let ret = gen.get("png");
+        assert!(ret == dir.join(&format!("{}-3.png", date.format("%Y-%m-%d"))));
+        *gen.date.borrow_mut() = date.checked_add_signed(chrono::Duration::days(-1)).unwrap();
+        let ret = gen.get("png");
+        assert!(ret == dir.join(&format!("{}-1.png", date.format("%Y-%m-%d"))));
     }
 }
