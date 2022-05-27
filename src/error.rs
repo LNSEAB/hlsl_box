@@ -5,6 +5,7 @@ use windows::Win32::Graphics::Direct3D::Dxc::*;
 struct Messages {
     read_file: &'static str,
     create_file: &'static str,
+    remove_file: &'static str,
     file_too_large: &'static str,
     unsupported_version: &'static str,
     invalid_version: &'static str,
@@ -18,6 +19,7 @@ impl Messages {
             Some("ja-JP") => Self {
                 read_file: "ファイルを読み込めません",
                 create_file: "ファイルを作成できません",
+                remove_file: "ファイルを削除できません",
                 file_too_large: "ファイルが大き過ぎます",
                 unsupported_version: "サポートされていないバージョンです",
                 invalid_version: "settings.tomlにおけるバージョンの書き方に誤りがあります",
@@ -27,6 +29,7 @@ impl Messages {
             _ => Self {
                 read_file: "cannot read the file",
                 create_file: "cannot create the file",
+                remove_file: "cannot remove the file",
                 file_too_large: "file too large",
                 unsupported_version: "unsupporrted version",
                 invalid_version: "invalid the version written in settings.toml",
@@ -53,8 +56,10 @@ pub enum Error {
     Compile(String),
     #[error("{}({})", MESSAGES.read_file, .0.display())]
     ReadFile(PathBuf),
-    #[error("{}", MESSAGES.create_file)]
-    CreateFile,
+    #[error("{}({})", MESSAGES.create_file, .0.display())]
+    CreateFile(PathBuf),
+    #[error("{}({})", MESSAGES.remove_file, .0.display())]
+    RemoveFile(PathBuf),
     #[error("{}", MESSAGES.file_too_large)]
     FileTooLarge,
     #[error("{}", MESSAGES.unsupported_version)]

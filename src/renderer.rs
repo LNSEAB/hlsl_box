@@ -330,7 +330,7 @@ impl Renderer {
         })?;
         let main_signal = self.main_queue.execute([cmd_list])?;
         let mut copy_signal = None;
-        if index % 2 == 0 && self.video.is_writing() {
+        if self.video.signal() {
             let cmd_list = CopyCommandList::new(
                 "Renderer::render write video",
                 &self.d3d12_device,

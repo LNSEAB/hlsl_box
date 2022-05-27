@@ -1,5 +1,5 @@
 use super::*;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::{mpsc, Arc, Mutex, MutexGuard};
 use windows::Win32::Media::MediaFoundation::*;
 
@@ -24,7 +24,7 @@ impl Context {
     ) -> anyhow::Result<Writer> {
         unsafe {
             let handle = MFCreateSinkWriterFromURL(path.as_ref().to_str().unwrap(), None, None)?;
-            Writer::new(handle, resolution, fps, bit_rate)
+            Writer::new(path.as_ref(), handle, resolution, fps, bit_rate)
         }
     }
 }
@@ -40,6 +40,7 @@ impl Drop for Context {
 }
 
 struct Writer {
+    path: PathBuf,
     handle: IMFSinkWriter,
     resolution: wita::PhysicalSize<u32>,
     fps: u32,
@@ -48,6 +49,7 @@ struct Writer {
 
 impl Writer {
     fn new(
+        path: &Path,
         handle: IMFSinkWriter,
         resolution: wita::PhysicalSize<u32>,
         fps: u32,
@@ -79,6 +81,7 @@ impl Writer {
             handle.SetInputMediaType(stream_index, &in_type, None)?;
             handle.BeginWriting()?;
             Ok(Self {
+                path: path.to_path_buf(),
                 handle,
                 resolution,
                 fps,
@@ -115,9 +118,13 @@ impl Writer {
         }
     }
 
-    fn finalize(&self) -> anyhow::Result<()> {
+    fn finalize(&self) -> Result<(), Error> {
         unsafe {
-            self.handle.Finalize()?;
+            if let Err(e) = self.handle.Finalize() {
+                std::fs::remove_file(&self.path)
+                    .map_err(|_| Error::RemoveFile(self.path.to_path_buf()))?;
+                return Err(e.into());
+            }
             Ok(())
         }
     }
@@ -193,9 +200,34 @@ impl Drop for Worker {
     }
 }
 
+struct Timer {
+    t: RefCell<std::time::Instant>,
+    per_frame: std::time::Duration,
+}
+
+impl Timer {
+    fn new(fps: u32) -> Self {
+        Self {
+            t: RefCell::new(std::time::Instant::now()),
+            per_frame: std::time::Duration::from_micros(1_000_000 / fps as u64),
+        }
+    }
+
+    fn signal(&self) -> bool {
+        let now = std::time::Instant::now();
+        if now - *self.t.borrow() >= self.per_frame {
+            *self.t.borrow_mut() = now;
+            true
+        } else {
+            false
+        }
+    }
+}
+
 pub struct Video {
     context: Context,
     worker: Option<Worker>,
+    timer: Option<Timer>,
 }
 
 impl Video {
@@ -203,6 +235,7 @@ impl Video {
         Ok(Self {
             context: Context::new()?,
             worker: None,
+            timer: None,
         })
     }
 
@@ -225,7 +258,12 @@ impl Video {
                 .create_writer(path, resolution, fps, bit_rate)?,
             end_frame,
         ));
+        self.timer = Some(Timer::new(fps));
         Ok(())
+    }
+
+    pub fn signal(&self) -> bool {
+        self.is_writing() && self.timer.as_ref().map_or(false, |timer| timer.signal())
     }
 
     pub fn write(&self, buffer: ReadBackBuffer, signal: Signal) -> anyhow::Result<()> {
@@ -244,6 +282,7 @@ impl Video {
 
     pub fn stop(&mut self) {
         self.worker = None;
+        self.timer = None;
     }
 
     pub fn lock(&self) -> Option<MutexGuard<()>> {

@@ -517,10 +517,11 @@ impl Application {
                                     let frame_rate = self.settings.video.frame_rate;
                                     let end_frame =
                                         Some(self.settings.video.end_frame).filter(|i| *i > 0);
-                                    if let Err(e) =
-                                        self.renderer
-                                            .start_video(self.video_file_gen.get(".mp4"), frame_rate, end_frame)
-                                    {
+                                    if let Err(e) = self.renderer.start_video(
+                                        self.video_file_gen.get(".mp4"),
+                                        frame_rate,
+                                        end_frame,
+                                    ) {
                                         error!("record_video: {}", e);
                                     }
                                 }
