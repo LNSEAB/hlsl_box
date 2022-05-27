@@ -13,7 +13,7 @@ use std::cell::RefCell;
 use std::rc::Rc;
 use std::sync::Arc;
 use tracing::{debug, error, info};
-use windows::Win32::Globalization::*;
+use windows::Win32::{Globalization::*, System::Com::*};
 
 use application::{Application, Method};
 use error::Error;
@@ -181,10 +181,24 @@ fn main() {
                 handler(info);
                 main_window.close();
             }));
-            let app = Application::new(th_settings, window_manager).and_then(|mut app| app.run());
-            if let Err(e) = app {
-                panic!("panic rendering thread: {}\n{}", e, e.backtrace());
-            }
+            tokio::runtime::Builder::new_multi_thread()
+                .enable_all()
+                .on_thread_start(|| unsafe {
+                    CoInitializeEx(
+                        std::ptr::null(),
+                        COINIT_MULTITHREADED | COINIT_DISABLE_OLE1DDE,
+                    )
+                    .unwrap();
+                })
+                .on_thread_stop(|| unsafe {
+                    CoUninitialize();
+                })
+                .build()
+                .unwrap()
+                .block_on(async {
+                    let mut app = Application::new(th_settings, window_manager).await.unwrap();
+                    app.run().await.unwrap();
+                });
             info!("end rendering thread");
         });
         *th_handle_f.borrow_mut() = Some(th);

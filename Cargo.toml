@@ -47,6 +47,14 @@ features = [
     "Win32_Media_MediaFoundation",
 ]
 
+[dependencies.tokio]
+version = "1.18.2"
+features = [
+    "rt-multi-thread",
+    "sync",
+    "time",
+]
+
 [profile.dev.package."*"]
 opt-level = 2
 

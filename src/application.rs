@@ -293,7 +293,7 @@ pub struct Application {
 }
 
 impl Application {
-    pub fn new(
+    pub async fn new(
         src_settings: Result<Settings, Error>,
         window_manager: WindowManager,
     ) -> anyhow::Result<Self> {
@@ -432,7 +432,7 @@ impl Application {
         Ok(())
     }
 
-    pub fn run(&mut self) -> anyhow::Result<()> {
+    pub async fn run(&mut self) -> anyhow::Result<()> {
         loop {
             if let Some(path) = self.exe_dir_monitor.try_recv() {
                 if path.as_path() == SETTINGS_PATH.as_path() {
