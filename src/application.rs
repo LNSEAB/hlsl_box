@@ -127,6 +127,15 @@ enum State {
     Error(ErrorMessage),
 }
 
+impl State {
+    fn is_rendering(&self) -> bool {
+        match self {
+            Self::Rendering(_) => true,
+            _ => false,
+        }
+    }
+}
+
 impl RenderUi for State {
     fn render(&self, cmd: &mltg::DrawCommand, size: wita::LogicalSize<f32>) {
         match &self {
@@ -473,7 +482,9 @@ impl Application {
                             self.show_frame_counter.set(!self.show_frame_counter.get());
                         }
                         Method::ScreenShot => {
-                            self.screen_shot.save(&self.renderer)?;
+                            if self.state.is_rendering() {
+                                self.screen_shot.save(&self.renderer)?;
+                            }
                         }
                         Method::Play => {
                             self.play = !self.play;
@@ -490,26 +501,28 @@ impl Application {
                             }
                         }
                         Method::RecordVideo => {
-                            if !VIDEO_PATH.is_dir() {
-                                std::fs::create_dir(&*VIDEO_PATH).unwrap();
-                            }
-                            self.timer = Timer::new();
-                            if let State::Rendering(r) = &mut self.state {
-                                r.parameters.time = 0.0;
-                            }
-                            if self.renderer.is_writing_video() {
-                                info!("record video stop");
-                                self.renderer.stop_video();
-                            } else {
-                                info!("record video start");
-                                let frame_rate = self.settings.video.frame_rate;
-                                let end_frame =
-                                    Some(self.settings.video.end_frame).filter(|i| *i > 0);
-                                if let Err(e) =
-                                    self.renderer
-                                        .start_video(self.video_file_gen.get(".mp4"), frame_rate, end_frame)
-                                {
-                                    error!("record_video: {}", e);
+                            if self.state.is_rendering() {
+                                if !VIDEO_PATH.is_dir() {
+                                    std::fs::create_dir(&*VIDEO_PATH).unwrap();
+                                }
+                                self.timer = Timer::new();
+                                if let State::Rendering(r) = &mut self.state {
+                                    r.parameters.time = 0.0;
+                                }
+                                if self.renderer.is_writing_video() {
+                                    info!("record video stop");
+                                    self.renderer.stop_video();
+                                } else {
+                                    info!("record video start");
+                                    let frame_rate = self.settings.video.frame_rate;
+                                    let end_frame =
+                                        Some(self.settings.video.end_frame).filter(|i| *i > 0);
+                                    if let Err(e) =
+                                        self.renderer
+                                            .start_video(self.video_file_gen.get(".mp4"), frame_rate, end_frame)
+                                    {
+                                        error!("record_video: {}", e);
+                                    }
                                 }
                             }
                         }
