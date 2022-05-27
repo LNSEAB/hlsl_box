@@ -129,10 +129,7 @@ enum State {
 
 impl State {
     fn is_rendering(&self) -> bool {
-        match self {
-            Self::Rendering(_) => true,
-            _ => false,
-        }
+        matches!(self, Self::Rendering(_))
     }
 }
 
