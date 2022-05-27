@@ -7,9 +7,11 @@ mod plane;
 mod swap_chain;
 mod ui;
 mod utility;
+mod video;
 
 use crate::*;
 use std::cell::{Cell, RefCell};
+use std::path::Path;
 use windows::core::{Interface, PCSTR};
 use windows::Win32::{
     Foundation::*,
@@ -214,6 +216,7 @@ pub struct Renderer {
     filling_plane: plane::Buffer,
     adjusted_plane: plane::Buffer,
     read_back_buffer: ReadBackBuffer,
+    video: video::Video,
 }
 
 impl Renderer {
@@ -227,7 +230,7 @@ impl Renderer {
         resolution: wita::PhysicalSize<u32>,
         compiler: &hlsl::Compiler,
         shader_model: hlsl::ShaderModel,
-    ) -> Result<Self, Error> {
+    ) -> anyhow::Result<Self> {
         unsafe {
             let (swap_chain, presentable_queue) =
                 SwapChain::new(d3d12_device, window, Self::BUFFER_COUNT)?;
@@ -260,6 +263,7 @@ impl Renderer {
             )?;
             let signals = Signals::new(cmd_allocators.len());
             let read_back_buffer = ReadBackBuffer::new(d3d12_device, resolution)?;
+            let video = video::Video::new()?;
             Ok(Self {
                 d3d12_device: d3d12_device.clone(),
                 swap_chain,
@@ -274,6 +278,7 @@ impl Renderer {
                 filling_plane,
                 adjusted_plane,
                 read_back_buffer,
+                video,
             })
         }
     }
@@ -298,7 +303,7 @@ impl Renderer {
         ps: Option<&Pipeline>,
         parameters: Option<&pixel_shader::Parameters>,
         r: &impl RenderUi,
-    ) -> Result<(), Error> {
+    ) -> anyhow::Result<()> {
         let index = self.swap_chain.current_buffer();
         self.signals.wait(index);
         let current_index = index * Self::ALLOCATORS_PER_FRAME;
@@ -323,7 +328,28 @@ impl Renderer {
             cmd.clear(&back_buffer, clear_color);
             cmd.layer(&ps_result, &back_buffer, &self.adjusted_plane);
         })?;
-        self.main_queue.execute([cmd_list])?;
+        let main_signal = self.main_queue.execute([cmd_list])?;
+        let mut copy_signal = None;
+        if self.video.signal() {
+            let cmd_list = CopyCommandList::new(
+                "Renderer::render write video",
+                &self.d3d12_device,
+                &self.cmd_allocators[Self::COPY_ALLOCATOR],
+            )?;
+            let src = self.render_target.copy_resource(index);
+            cmd_list.record(
+                &self.cmd_allocators[Self::COPY_ALLOCATOR],
+                |cmd: CopyCommand<CopyResource, ReadBackBuffer>| {
+                    cmd.barrier([src.enter()]);
+                    cmd.copy(&src, &self.read_back_buffer);
+                    cmd.barrier([src.leave()]);
+                },
+            )?;
+            self.copy_queue.wait(&main_signal)?;
+            let signal = self.copy_queue.execute([&cmd_list])?;
+            copy_signal = Some(signal.clone());
+            self.video.write(self.read_back_buffer.clone(), signal)?;
+        }
         cmd_list.record(&cmd_allocators[1], |cmd| {
             cmd.barrier([ui_buffer.enter()]);
             cmd.layer(&ui_buffer, &back_buffer, &self.filling_plane);
@@ -333,6 +359,9 @@ impl Renderer {
         self.main_queue.wait(&ui_signal)?;
         self.main_queue.execute([cmd_list])?;
         let signal = self.main_queue.present(interval)?;
+        if let Some(copy_signal) = copy_signal.as_ref() {
+            self.main_queue.wait(copy_signal)?;
+        }
         self.signals.set(index, signal);
         Ok(())
     }
@@ -341,12 +370,36 @@ impl Renderer {
         self.signals.wait_all();
     }
 
+    pub fn start_video(
+        &mut self,
+        path: impl AsRef<Path>,
+        frame_rate: u32,
+        end_frame: Option<u64>,
+    ) -> anyhow::Result<()> {
+        self.video.start(
+            path,
+            self.render_target.size(),
+            frame_rate,
+            1_500_000,
+            end_frame,
+        )
+    }
+
+    pub fn is_writing_video(&self) -> bool {
+        self.video.is_writing()
+    }
+
+    pub fn stop_video(&mut self) {
+        self.video.stop();
+    }
+
     pub fn screen_shot(&self) -> anyhow::Result<Option<image::RgbaImage>> {
-        let index = self.signals.last_frame_index();
-        if index.is_none() {
+        let _lock = self.video.lock();
+        let frame = self.signals.last_frame();
+        if frame.is_none() {
             return Ok(None);
         }
-        let index = index.unwrap();
+        let (index, frame) = frame.unwrap();
         let cmd_list = CopyCommandList::new(
             "Renderer::screen_shot",
             &self.d3d12_device,
@@ -361,6 +414,7 @@ impl Renderer {
                 cmd.barrier([src.leave()]);
             },
         )?;
+        self.copy_queue.wait(&frame)?;
         self.copy_queue.execute([&cmd_list])?.wait()?;
         let img = self.read_back_buffer.to_image()?;
         Ok(Some(img))

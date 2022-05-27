@@ -45,6 +45,12 @@ pub struct Shader {
 }
 
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+pub struct Video {
+    pub frame_rate: u32,
+    pub end_frame: u64,
+}
+
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct ScrollBar {
     pub width: f32,
     pub bg_color: [f32; 4],
@@ -74,16 +80,17 @@ pub struct Settings {
     pub auto_play: bool,
     pub resolution: Resolution,
     pub shader: Shader,
+    pub video: Video,
     pub appearance: Appearance,
 }
 
 fn load_file(path: &Path, default: &str) -> Result<String, Error> {
     if !path.is_file() {
-        let file = File::create(path).map_err(|_| Error::CreateFile)?;
+        let file = File::create(path).map_err(|_| Error::CreateFile(path.to_path_buf()))?;
         let mut writer = BufWriter::new(file);
         writer
             .write_all(default.as_bytes())
-            .map_err(|_| Error::CreateFile)?;
+            .map_err(|_| Error::CreateFile(path.to_path_buf()))?;
         info!("create \"{}\"", path.display());
     }
     let file = File::open(path).map_err(|_| Error::ReadFile(path.into()))?;
@@ -99,11 +106,11 @@ fn save_file<T>(path: &Path, this: &T) -> Result<(), Error>
 where
     T: serde::Serialize,
 {
-    let file = File::create(path).map_err(|_| Error::CreateFile)?;
+    let file = File::create(path).map_err(|_| Error::CreateFile(path.to_path_buf()))?;
     let mut writer = BufWriter::new(file);
     writer
         .write_all(toml::to_string(this)?.as_bytes())
-        .map_err(|_| Error::CreateFile)?;
+        .map_err(|_| Error::CreateFile(path.to_path_buf()))?;
     Ok(())
 }
 

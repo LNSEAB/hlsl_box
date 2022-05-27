@@ -10,6 +10,10 @@ height = 480
 vs_args = []
 ps_args = []
 
+[video]
+frame_rate = 30
+end_frame = 0
+
 [appearance]
 clear_color = [0.1, 0.1, 0.1]
 font = ""

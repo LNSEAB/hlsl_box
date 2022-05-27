@@ -44,6 +44,7 @@ features = [
     "Win32_System_WindowsProgramming",
     "Win32_UI_WindowsAndMessaging",
     "Win32_Globalization",
+    "Win32_Media_MediaFoundation",
 ]
 
 [profile.dev.package."*"]

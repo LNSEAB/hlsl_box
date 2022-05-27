@@ -130,6 +130,7 @@ impl PixelShaderResourceBuffers for RenderTargetBuffers {
     }
 }
 
+#[derive(Clone)]
 pub struct ReadBackBuffer {
     buffer: Buffer,
     size: wita::PhysicalSize<u32>,
@@ -164,6 +165,9 @@ impl Resource for ReadBackBuffer {
         self.buffer.handle()
     }
 }
+
+unsafe impl Send for ReadBackBuffer {}
+unsafe impl Sync for ReadBackBuffer {}
 
 #[derive(Clone, PartialEq, Eq)]
 #[repr(transparent)]

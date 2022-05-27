@@ -29,6 +29,8 @@ impl Signal {
     }
 }
 
+unsafe impl Send for Signal {}
+
 pub struct Signals {
     signals: RefCell<Vec<Option<Signal>>>,
     event: Event,
@@ -65,7 +67,7 @@ impl Signals {
         }
     }
 
-    pub fn last_frame_index(&self) -> Option<usize> {
+    pub fn last_frame(&self) -> Option<(usize, Signal)> {
         self.signals
             .borrow()
             .iter()
@@ -77,6 +79,7 @@ impl Signals {
                     .unwrap_or((r, value))
             })
             .0
+            .map(|i| (i, self.signals.borrow()[i].as_ref().unwrap().clone()))
     }
 }
 

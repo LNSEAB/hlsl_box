@@ -60,6 +60,7 @@ static SETTINGS_PATH: Lazy<std::path::PathBuf> = Lazy::new(|| EXE_DIR_PATH.join(
 static WINDOW_SETTING_PATH: Lazy<std::path::PathBuf> =
     Lazy::new(|| EXE_DIR_PATH.join("window.toml"));
 static SCREEN_SHOT_PATH: Lazy<std::path::PathBuf> = Lazy::new(|| EXE_DIR_PATH.join("screenshot"));
+static VIDEO_PATH: Lazy<std::path::PathBuf> = Lazy::new(|| EXE_DIR_PATH.join("video"));
 
 fn set_logger() {
     use std::fs::File;
@@ -161,6 +162,10 @@ fn main() {
         key_map.insert(vec![wita::VirtualKey::PrintScreen], Method::ScreenShot);
         key_map.insert(vec![wita::VirtualKey::Space], Method::Play);
         key_map.insert(vec![wita::VirtualKey::Char('R')], Method::Head);
+        key_map.insert(
+            vec![wita::VirtualKey::Ctrl, wita::VirtualKey::Char('V')],
+            Method::RecordVideo,
+        );
         key_map.insert(
             vec![wita::VirtualKey::Ctrl, wita::VirtualKey::Char('Q')],
             Method::Exit,
