@@ -18,7 +18,7 @@ impl Event {
     }
 
     pub async fn wait(&self) {
-        let handle = self.0.clone();
+        let handle = self.0;
         tokio::task::spawn_blocking(move || unsafe {
             WaitForSingleObject(handle, INFINITE);
         })

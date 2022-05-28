@@ -50,7 +50,8 @@ impl Signals {
     }
 
     pub async fn wait(&self, index: usize) {
-        if let Some(signal) = self.signals.borrow_mut()[index].take() {
+        let signal = self.signals.borrow_mut()[index].take();
+        if let Some(signal) = signal {
             if !signal.is_completed() {
                 signal.set_event(&self.event).unwrap();
                 self.event.wait().await;
@@ -59,8 +60,8 @@ impl Signals {
     }
 
     pub async fn wait_all(&self) {
-        let mut signals = self.signals.borrow_mut();
-        for signal in signals.iter_mut().flat_map(|s| s.take()) {
+        let signals = self.signals.borrow_mut().iter_mut().flat_map(|s| s.take()).collect::<Vec<_>>();
+        for signal in signals {
             if !signal.is_completed() {
                 signal.set_event(&self.event).unwrap();
                 self.event.wait().await;
