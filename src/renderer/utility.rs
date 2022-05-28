@@ -321,10 +321,13 @@ pub struct Pool<T> {
 }
 
 impl<T> Pool<T> {
-    pub fn with_initializer<E>(n: usize, f: impl Fn() -> Result<T, E>) -> Result<Arc<Self>, E> {
+    pub fn with_initializer(
+        n: usize,
+        f: impl Fn(usize) -> anyhow::Result<T>,
+    ) -> anyhow::Result<Arc<Self>> {
         let mut v = VecDeque::new();
-        for _ in 0..n {
-            v.push_back(f()?);
+        for i in 0..n {
+            v.push_back(f(i)?);
         }
         Ok(Arc::new(Self {
             queue: Mutex::new(v),
@@ -337,6 +340,28 @@ impl<T> Pool<T> {
             let mut pool = self.queue.lock().unwrap();
             if !pool.is_empty() {
                 break pool.pop_front();
+            }
+            std::mem::drop(pool);
+            self.notify.notified().await;
+        };
+        PoolElement {
+            pool: self.clone(),
+            elem,
+        }
+    }
+
+    pub async fn pop_if(self: &Arc<Self>, pred: impl Fn(&T) -> bool) -> PoolElement<T> {
+        let elem = 'elem: loop {
+            let pool = self.queue.lock().unwrap();
+            if !pool.is_empty() {
+                std::mem::drop(pool);
+                loop {
+                    let mut pool = self.queue.lock().unwrap();
+                    if pred(pool.front().unwrap()) {
+                        break 'elem pool.pop_front();
+                    }
+                    pool.rotate_left(1);
+                }
             }
             std::mem::drop(pool);
             self.notify.notified().await;
