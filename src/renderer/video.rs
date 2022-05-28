@@ -133,12 +133,12 @@ impl Writer {
 unsafe impl Send for Writer {}
 
 struct Worker {
-    tx: mpsc::UnboundedSender<(ReadBackBuffer, Signal)>,
+    tx: mpsc::UnboundedSender<(PoolElement<ReadBackBuffer>, Signal)>,
 }
 
 impl Worker {
     fn new(writer: Writer, end_frame: Option<u64>) -> Self {
-        let (tx, mut rx) = mpsc::unbounded_channel::<(ReadBackBuffer, Signal)>();
+        let (tx, mut rx) = mpsc::unbounded_channel::<(PoolElement<ReadBackBuffer>, Signal)>();
         tokio::task::spawn(async move {
             let mut frame = 0;
             loop {
@@ -250,7 +250,7 @@ impl Video {
         self.is_writing() && self.timer.as_ref().map_or(false, |timer| timer.signal())
     }
 
-    pub fn write(&self, buffer: ReadBackBuffer, signal: Signal) -> anyhow::Result<()> {
+    pub fn write(&self, buffer: PoolElement<ReadBackBuffer>, signal: Signal) -> anyhow::Result<()> {
         if self.is_writing() {
             if let Some(worker) = self.worker.as_ref() {
                 worker.tx.send((buffer, signal)).unwrap_or(());

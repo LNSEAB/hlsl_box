@@ -183,6 +183,7 @@ fn main() {
             }));
             tokio::runtime::Builder::new_multi_thread()
                 .enable_all()
+                .worker_threads(3)
                 .on_thread_start(|| unsafe {
                     CoInitializeEx(
                         std::ptr::null(),

@@ -215,7 +215,7 @@ pub struct Renderer {
     main_queue: PresentableQueue,
     filling_plane: plane::Buffer,
     adjusted_plane: plane::Buffer,
-    read_back_buffer: ReadBackBuffer,
+    read_back_buffers: Arc<Pool<ReadBackBuffer>>,
     video: video::Video,
 }
 
@@ -223,6 +223,7 @@ impl Renderer {
     const ALLOCATORS_PER_FRAME: usize = 2;
     const BUFFER_COUNT: usize = 2;
     const COPY_ALLOCATOR: usize = Self::ALLOCATORS_PER_FRAME * Self::BUFFER_COUNT;
+    const READ_BACK_BUFFER_COUNT: usize = 3;
 
     pub async fn new(
         d3d12_device: &ID3D12Device,
@@ -262,7 +263,9 @@ impl Renderer {
                 layer_shader,
             )?;
             let signals = Signals::new(cmd_allocators.len());
-            let read_back_buffer = ReadBackBuffer::new(d3d12_device, resolution)?;
+            let read_back_buffers = Pool::with_initializer(Self::READ_BACK_BUFFER_COUNT, || {
+                ReadBackBuffer::new(d3d12_device, resolution)
+            })?;
             let video = video::Video::new()?;
             Ok(Self {
                 d3d12_device: d3d12_device.clone(),
@@ -277,7 +280,7 @@ impl Renderer {
                 main_queue: presentable_queue,
                 filling_plane,
                 adjusted_plane,
-                read_back_buffer,
+                read_back_buffers,
                 video,
             })
         }
@@ -331,6 +334,7 @@ impl Renderer {
         let main_signal = self.main_queue.execute([cmd_list])?;
         let mut copy_signal = None;
         if self.video.signal() {
+            let read_back_buffer = self.read_back_buffers.pop().await;
             let cmd_list = CopyCommandList::new(
                 "Renderer::render write video",
                 &self.d3d12_device,
@@ -341,14 +345,14 @@ impl Renderer {
                 &self.cmd_allocators[Self::COPY_ALLOCATOR],
                 |cmd: CopyCommand<CopyResource, ReadBackBuffer>| {
                     cmd.barrier([src.enter()]);
-                    cmd.copy(&src, &self.read_back_buffer);
+                    cmd.copy(&src, &*read_back_buffer);
                     cmd.barrier([src.leave()]);
                 },
             )?;
             self.copy_queue.wait(&main_signal)?;
             let signal = self.copy_queue.execute([&cmd_list])?;
             copy_signal = Some(signal.clone());
-            self.video.write(self.read_back_buffer.clone(), signal)?;
+            self.video.write(read_back_buffer, signal)?;
         }
         cmd_list.record(&cmd_allocators[1], |cmd| {
             cmd.barrier([ui_buffer.enter()]);
@@ -405,17 +409,18 @@ impl Renderer {
             &self.cmd_allocators[Self::COPY_ALLOCATOR],
         )?;
         let src = self.render_target.copy_resource(index);
+        let read_back_buffer = self.read_back_buffers.pop().await;
         cmd_list.record(
             &self.cmd_allocators[Self::COPY_ALLOCATOR],
             |cmd: CopyCommand<CopyResource, ReadBackBuffer>| {
                 cmd.barrier([src.enter()]);
-                cmd.copy(&src, &self.read_back_buffer);
+                cmd.copy(&src, &*read_back_buffer);
                 cmd.barrier([src.leave()]);
             },
         )?;
         self.copy_queue.wait(&frame)?;
         self.copy_queue.execute([&cmd_list])?.wait().await?;
-        let img = self.read_back_buffer.to_image()?;
+        let img = read_back_buffer.to_image()?;
         Ok(Some(img))
     }
 
@@ -488,7 +493,9 @@ impl Renderer {
             &self.cmd_allocators[0],
             layer_shader,
         )?;
-        self.read_back_buffer = ReadBackBuffer::new(&self.d3d12_device, resolution.into())?;
+        self.read_back_buffers = Pool::with_initializer(Self::READ_BACK_BUFFER_COUNT, || {
+            ReadBackBuffer::new(&self.d3d12_device, resolution.into())
+        })?;
         self.render_target = render_target;
         self.pixel_shader = pixel_shader;
         self.cmd_list = cmd_list;
