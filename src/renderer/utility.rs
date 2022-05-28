@@ -337,11 +337,12 @@ impl<T> Pool<T> {
 
     pub async fn pop(self: &Arc<Self>) -> PoolElement<T> {
         let elem = loop {
-            let mut pool = self.queue.lock().unwrap();
-            if !pool.is_empty() {
-                break pool.pop_front();
+            {
+                let mut pool = self.queue.lock().unwrap();
+                if !pool.is_empty() {
+                    break pool.pop_front();
+                }
             }
-            std::mem::drop(pool);
             self.notify.notified().await;
         };
         PoolElement {
@@ -352,18 +353,19 @@ impl<T> Pool<T> {
 
     pub async fn pop_if(self: &Arc<Self>, pred: impl Fn(&T) -> bool) -> PoolElement<T> {
         let elem = 'elem: loop {
-            let pool = self.queue.lock().unwrap();
-            if !pool.is_empty() {
-                std::mem::drop(pool);
-                loop {
-                    let mut pool = self.queue.lock().unwrap();
-                    if pred(pool.front().unwrap()) {
-                        break 'elem pool.pop_front();
+            {
+                let pool = self.queue.lock().unwrap();
+                if !pool.is_empty() {
+                    std::mem::drop(pool);
+                    loop {
+                        let mut pool = self.queue.lock().unwrap();
+                        if pred(pool.front().unwrap()) {
+                            break 'elem pool.pop_front();
+                        }
+                        pool.rotate_left(1);
                     }
-                    pool.rotate_left(1);
                 }
             }
-            std::mem::drop(pool);
             self.notify.notified().await;
         };
         PoolElement {
