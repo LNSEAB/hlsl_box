@@ -2,7 +2,6 @@ mod error_message;
 mod frame_counter;
 
 use crate::*;
-use std::sync::mpsc;
 use std::{
     cell::Cell,
     collections::VecDeque,
@@ -226,49 +225,32 @@ impl FileNameGenerator {
 }
 
 struct ScreenShot {
-    th: Option<std::thread::JoinHandle<()>>,
-    tx: Option<mpsc::Sender<(image::RgbaImage, PathBuf)>>,
     file_name_gen: FileNameGenerator,
 }
 
 impl ScreenShot {
     fn new() -> Self {
-        let (tx, rx) = mpsc::channel::<(image::RgbaImage, PathBuf)>();
-        let th = std::thread::spawn(move || {
-            while let Ok((img, path)) = rx.recv() {
-                match img.save(&path) {
-                    Ok(_) => info!("save screen shot: {}", path.display()),
-                    Err(e) => error!("save screen shot: {}", e),
-                }
-            }
-        });
         let file_name = FileNameGenerator::new(&*SCREEN_SHOT_PATH);
         Self {
-            th: Some(th),
-            tx: Some(tx),
             file_name_gen: file_name,
         }
     }
 
-    fn save(&self, renderer: &Renderer) -> anyhow::Result<()> {
+    async fn save(&self, renderer: &Renderer) -> anyhow::Result<()> {
         if !SCREEN_SHOT_PATH.is_dir() {
             std::fs::create_dir(&*SCREEN_SHOT_PATH).unwrap();
         }
-        let img = renderer.screen_shot()?;
+        let img = renderer.screen_shot().await?;
         if img.is_none() {
             return Ok(());
         }
         let img = img.unwrap();
         let path = self.file_name_gen.get("png");
-        self.tx.as_ref().unwrap().send((img, path)).ok();
+        tokio::task::spawn_blocking(move || match img.save(&path) {
+            Ok(_) => info!("save screen shot: {}", path.display()),
+            Err(e) => error!("save screen shot: {}", e),
+        });
         Ok(())
-    }
-}
-
-impl Drop for ScreenShot {
-    fn drop(&mut self) {
-        std::mem::drop(self.tx.take().unwrap());
-        self.th.take().unwrap().join().unwrap_or(());
     }
 }
 
@@ -329,7 +311,8 @@ impl Application {
             settings.resolution.into(),
             &compiler,
             shader_model,
-        )?;
+        )
+        .await?;
         let factory = renderer.mltg_factory();
         let ui_props = UiProperties::new(settings, &factory)?;
         let show_frame_counter = Rc::new(Cell::new(settings.frame_counter));
@@ -369,8 +352,8 @@ impl Application {
             video_file_gen: FileNameGenerator::new(&*VIDEO_PATH),
         };
         if let Some(path) = ENV_ARGS.input_file.as_ref().map(Path::new) {
-            if let Err(e) = this.load_file(path) {
-                this.set_error(path, e)?;
+            if let Err(e) = this.load_file(path).await {
+                this.set_error(path, e).await?;
             }
         }
         if ENV_ARGS.debug_error_msg {
@@ -378,12 +361,13 @@ impl Application {
                 s.push_str(&format!("{}\n", i));
                 s
             });
-            this.set_error(Path::new("./this_is_test"), Error::TestErrorMessage(msg))?;
+            this.set_error(Path::new("./this_is_test"), Error::TestErrorMessage(msg))
+                .await?;
         }
         Ok(this)
     }
 
-    fn load_file(&mut self, path: &Path) -> Result<(), Error> {
+    async fn load_file(&mut self, path: &Path) -> Result<(), Error> {
         if !path.is_file() {
             return Err(Error::ReadFile(path.into()));
         }
@@ -419,7 +403,8 @@ impl Application {
             ps,
             frame_counter,
             show_frame_counter: self.show_frame_counter.clone(),
-        }));
+        }))
+        .await;
         self.play = self.settings.auto_play;
         self.timer = Timer::new();
         let path_str = path.display().to_string();
@@ -436,7 +421,7 @@ impl Application {
         loop {
             if let Some(path) = self.exe_dir_monitor.try_recv() {
                 if path.as_path() == SETTINGS_PATH.as_path() {
-                    self.reload_settings()?;
+                    self.reload_settings().await?;
                 }
             }
             let cursor_position = self.window_manager.get_cursor_position();
@@ -447,8 +432,8 @@ impl Application {
                         State::Error(e)
                             if e.path() == *SETTINGS_PATH || e.path() == *WINDOW_SETTING_PATH => {}
                         _ => {
-                            if let Err(e) = self.load_file(&path) {
-                                self.set_error(&path, e)?;
+                            if let Err(e) = self.load_file(&path).await {
+                                self.set_error(&path, e).await?;
                             }
                         }
                     }
@@ -464,8 +449,8 @@ impl Application {
                                 let dlg = ifdlg::FileOpenDialog::new();
                                 match dlg.show::<PathBuf>() {
                                     Ok(Some(path)) => {
-                                        if let Err(e) = self.load_file(&path) {
-                                            self.set_error(&path, e)?;
+                                        if let Err(e) = self.load_file(&path).await {
+                                            self.set_error(&path, e).await?;
                                         }
                                     }
                                     Err(e) => {
@@ -480,7 +465,7 @@ impl Application {
                         }
                         Method::ScreenShot => {
                             if self.state.is_rendering() {
-                                self.screen_shot.save(&self.renderer)?;
+                                self.screen_shot.save(&self.renderer).await?;
                             }
                         }
                         Method::Play => {
@@ -551,7 +536,7 @@ impl Application {
                 }
                 Some(WindowEvent::Resized(size)) => {
                     debug!("WindowEvent::Resized");
-                    if let Err(e) = self.renderer.resize(size) {
+                    if let Err(e) = self.renderer.resize(size).await {
                         error!("{}", e);
                     }
                     if let State::Error(e) = &mut self.state {
@@ -563,7 +548,7 @@ impl Application {
                 }
                 Some(WindowEvent::Restored(size)) => {
                     debug!("WindowEvent::Restored");
-                    if let Err(e) = self.renderer.restore(size) {
+                    if let Err(e) = self.renderer.restore(size).await {
                         error!("{}", e);
                     }
                     if let State::Error(e) = &mut self.state {
@@ -578,7 +563,7 @@ impl Application {
                 }
                 Some(WindowEvent::Maximized(size)) => {
                     debug!("WindowEvent::Maximized");
-                    if let Err(e) = self.renderer.maximize(size) {
+                    if let Err(e) = self.renderer.maximize(size).await {
                         error!("{}", e);
                     }
                     if let State::Error(e) = &mut self.state {
@@ -594,7 +579,7 @@ impl Application {
                         error!("{}", e);
                     }
                     let size = self.window_manager.main_window.inner_size();
-                    if let Err(e) = self.renderer.resize(size) {
+                    if let Err(e) = self.renderer.resize(size).await {
                         error!("{}", e);
                     }
                 }
@@ -624,8 +609,8 @@ impl Application {
                 match &self.state {
                     State::Rendering(r) => {
                         if r.path == path {
-                            if let Err(e) = self.load_file(&path) {
-                                self.set_error(&path, e)?;
+                            if let Err(e) = self.load_file(&path).await {
+                                self.set_error(&path, e).await?;
                             }
                         }
                     }
@@ -634,8 +619,8 @@ impl Application {
                             && e.path() != *WINDOW_SETTING_PATH
                             && e.path() == path
                         {
-                            if let Err(e) = self.load_file(&path) {
-                                self.set_error(&path, e)?;
+                            if let Err(e) = self.load_file(&path).await {
+                                self.set_error(&path, e).await?;
                             }
                         }
                     }
@@ -666,14 +651,14 @@ impl Application {
                     .renderer
                     .render(1, self.clear_color, None, None, &self.state),
             };
-            if let Err(e) = ret {
+            if let Err(e) = ret.await {
                 error!("render: {}", e);
             }
         }
         Ok(())
     }
 
-    fn set_error(&mut self, path: &Path, e: Error) -> anyhow::Result<()> {
+    async fn set_error(&mut self, path: &Path, e: Error) -> anyhow::Result<()> {
         let dpi = self.window_manager.main_window.dpi();
         let size = self
             .window_manager
@@ -692,26 +677,27 @@ impl Application {
             &self.ui_props,
             [size.width, size.height].into(),
             hlsl_path,
-        )?));
+        )?))
+        .await;
         error!("{}", e);
         Ok(())
     }
 
-    fn set_state(&mut self, new_state: State) {
-        self.renderer.wait_all_signals();
+    async fn set_state(&mut self, new_state: State) {
+        self.renderer.wait_all_signals().await;
         self.state = new_state;
     }
 
-    fn reload_settings(&mut self) -> anyhow::Result<()> {
+    async fn reload_settings(&mut self) -> anyhow::Result<()> {
         let settings = Settings::load(&*SETTINGS_PATH);
         let settings = match settings {
             Ok(settings) => settings,
             Err(e) => {
-                self.set_error(&*SETTINGS_PATH, e)?;
+                self.set_error(&*SETTINGS_PATH, e).await?;
                 return Ok(());
             }
         };
-        self.renderer.wait_all_signals();
+        self.renderer.wait_all_signals().await;
         let shader_model =
             hlsl::ShaderModel::new(&self.d3d12_device, settings.shader.version.as_ref())?;
         let clear_color = [
@@ -722,15 +708,16 @@ impl Application {
         ];
         let ui_props = UiProperties::new(&settings, &self.ui_props.factory)?;
         self.renderer
-            .recreate(settings.resolution, &self.compiler, shader_model)?;
+            .recreate(settings.resolution, &self.compiler, shader_model)
+            .await?;
         self.window_manager.update_resolution(settings.resolution);
         let mut size = self.window_manager.main_window.inner_size();
         if self.window_manager.main_window.is_maximized() {
-            self.renderer.maximize(size)?;
+            self.renderer.maximize(size).await?;
         } else {
             size.height = size.width * settings.resolution.height / settings.resolution.width;
             self.window_manager.main_window.set_inner_size(size);
-            self.renderer.resize(size)?;
+            self.renderer.resize(size).await?;
         }
         match &mut self.state {
             State::Rendering(r) => {
@@ -743,11 +730,11 @@ impl Application {
                 if em.path() == *SETTINGS_PATH || em.path() == *WINDOW_SETTING_PATH =>
             {
                 if let Some(path) = em.hlsl_path().cloned() {
-                    if let Err(e) = self.load_file(&path) {
-                        self.set_error(&path, e)?;
+                    if let Err(e) = self.load_file(&path).await {
+                        self.set_error(&path, e).await?;
                     }
                 } else {
-                    self.set_state(State::Init);
+                    self.set_state(State::Init).await;
                 }
             }
             State::Error(em) => {

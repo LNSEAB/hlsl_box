@@ -224,7 +224,7 @@ impl Renderer {
     const BUFFER_COUNT: usize = 2;
     const COPY_ALLOCATOR: usize = Self::ALLOCATORS_PER_FRAME * Self::BUFFER_COUNT;
 
-    pub fn new(
+    pub async fn new(
         d3d12_device: &ID3D12Device,
         window: &wita::Window,
         resolution: wita::PhysicalSize<u32>,
@@ -252,8 +252,8 @@ impl Renderer {
                 RenderTargetBuffers::new(d3d12_device, resolution, Self::BUFFER_COUNT)?;
             let pixel_shader = PixelShader::new(d3d12_device, compiler, shader_model)?;
             let ui = Ui::new(d3d12_device, Self::BUFFER_COUNT, window)?;
-            let filling_plane = plane::Buffer::new(d3d12_device, &copy_queue)?;
-            let adjusted_plane = plane::Buffer::new(d3d12_device, &copy_queue)?;
+            let filling_plane = plane::Buffer::new(d3d12_device, &copy_queue).await?;
+            let adjusted_plane = plane::Buffer::new(d3d12_device, &copy_queue).await?;
             let layer_shader = LayerShader::new(d3d12_device, compiler, shader_model)?;
             let cmd_list = DirectCommandList::new(
                 "Renderer::cmd_list",
@@ -296,7 +296,7 @@ impl Renderer {
             .create_pipeline(name, &self.d3d12_device, ps)
     }
 
-    pub fn render(
+    pub async fn render(
         &self,
         interval: u32,
         clear_color: [f32; 4],
@@ -305,7 +305,7 @@ impl Renderer {
         r: &impl RenderUi,
     ) -> anyhow::Result<()> {
         let index = self.swap_chain.current_buffer();
-        self.signals.wait(index);
+        self.signals.wait(index).await;
         let current_index = index * Self::ALLOCATORS_PER_FRAME;
         let cmd_allocators =
             &self.cmd_allocators[current_index..current_index + Self::ALLOCATORS_PER_FRAME];
@@ -366,8 +366,8 @@ impl Renderer {
         Ok(())
     }
 
-    pub fn wait_all_signals(&self) {
-        self.signals.wait_all();
+    pub async fn wait_all_signals(&self) {
+        self.signals.wait_all().await;
     }
 
     pub fn start_video(
@@ -393,8 +393,7 @@ impl Renderer {
         self.video.stop();
     }
 
-    pub fn screen_shot(&self) -> anyhow::Result<Option<image::RgbaImage>> {
-        let _lock = self.video.lock();
+    pub async fn screen_shot(&self) -> anyhow::Result<Option<image::RgbaImage>> {
         let frame = self.signals.last_frame();
         if frame.is_none() {
             return Ok(None);
@@ -415,15 +414,15 @@ impl Renderer {
             },
         )?;
         self.copy_queue.wait(&frame)?;
-        self.copy_queue.execute([&cmd_list])?.wait()?;
+        self.copy_queue.execute([&cmd_list])?.wait().await?;
         let img = self.read_back_buffer.to_image()?;
         Ok(Some(img))
     }
 
-    pub fn resize(&mut self, size: wita::PhysicalSize<u32>) -> Result<(), Error> {
-        self.wait_all_signals();
+    pub async fn resize(&mut self, size: wita::PhysicalSize<u32>) -> Result<(), Error> {
+        self.wait_all_signals().await;
         self.swap_chain.resize(&self.d3d12_device, size)?;
-        self.ui.resize(&self.d3d12_device, size)?;
+        self.ui.resize(&self.d3d12_device, size).await?;
         Ok(())
     }
 
@@ -432,20 +431,22 @@ impl Renderer {
         Ok(())
     }
 
-    pub fn restore(&mut self, size: wita::PhysicalSize<u32>) -> Result<(), Error> {
-        self.wait_all_signals();
+    pub async fn restore(&mut self, size: wita::PhysicalSize<u32>) -> Result<(), Error> {
+        self.wait_all_signals().await;
         self.swap_chain.resize(&self.d3d12_device, size)?;
-        self.ui.resize(&self.d3d12_device, size)?;
-        self.adjusted_plane.replace(
-            &self.d3d12_device,
-            &self.copy_queue,
-            &plane::Meshes::new(1.0, 1.0),
-        )?;
+        self.ui.resize(&self.d3d12_device, size).await?;
+        self.adjusted_plane
+            .replace(
+                &self.d3d12_device,
+                &self.copy_queue,
+                &plane::Meshes::new(1.0, 1.0),
+            )
+            .await?;
         Ok(())
     }
 
-    pub fn maximize(&mut self, size: wita::PhysicalSize<u32>) -> Result<(), Error> {
-        self.wait_all_signals();
+    pub async fn maximize(&mut self, size: wita::PhysicalSize<u32>) -> Result<(), Error> {
+        self.wait_all_signals().await;
         self.swap_chain.resize(&self.d3d12_device, size)?;
         let size_f = size.cast::<f32>();
         let resolution = self.render_target.size().cast::<f32>();
@@ -456,22 +457,24 @@ impl Renderer {
         } else {
             [aspect_resolution / aspect_size, 1.0]
         };
-        self.adjusted_plane.replace(
-            &self.d3d12_device,
-            &self.copy_queue,
-            &plane::Meshes::new(s[0], s[1]),
-        )?;
-        self.ui.resize(&self.d3d12_device, size)?;
+        self.adjusted_plane
+            .replace(
+                &self.d3d12_device,
+                &self.copy_queue,
+                &plane::Meshes::new(s[0], s[1]),
+            )
+            .await?;
+        self.ui.resize(&self.d3d12_device, size).await?;
         Ok(())
     }
 
-    pub fn recreate(
+    pub async fn recreate(
         &mut self,
         resolution: settings::Resolution,
         compiler: &hlsl::Compiler,
         shader_model: hlsl::ShaderModel,
     ) -> Result<(), Error> {
-        self.wait_all_signals();
+        self.wait_all_signals().await;
         let render_target = RenderTargetBuffers::new(
             &self.d3d12_device,
             wita::PhysicalSize::new(resolution.width, resolution.height),
@@ -495,7 +498,11 @@ impl Renderer {
 
 impl Drop for Renderer {
     fn drop(&mut self) {
-        self.wait_all_signals();
+        tokio::task::block_in_place(|| {
+            tokio::runtime::Handle::current().block_on(async {
+                self.wait_all_signals().await;
+            });
+        });
     }
 }
 
@@ -503,8 +510,8 @@ impl Drop for Renderer {
 mod tests {
     use super::*;
 
-    #[test]
-    fn render_fill_test() {
+    #[tokio::test]
+    async fn render_fill_test() {
         let device: ID3D12Device = unsafe {
             let mut device = None;
             D3D12CreateDevice(None, D3D_FEATURE_LEVEL_12_1, &mut device).unwrap();
@@ -529,7 +536,7 @@ mod tests {
             CommandQueue::<DirectCommandList>::new("render_test::cmd_queue", &device).unwrap();
         let copy_queue =
             CommandQueue::<CopyCommandList>::new("render_test::copy_queue", &device).unwrap();
-        let plane = plane::Buffer::new(&device, &copy_queue).unwrap();
+        let plane = plane::Buffer::new(&device, &copy_queue).await.unwrap();
         let pixel_shader = PixelShader::new(&device, &compiler, shader_model).unwrap();
         let resolution = wita::PhysicalSize::new(640, 480);
         let blob = compiler
@@ -559,7 +566,12 @@ mod tests {
                 cmd.barrier([target.leave()]);
             })
             .unwrap();
-        cmd_queue.execute([&cmd_list]).unwrap().wait().unwrap();
+        cmd_queue
+            .execute([&cmd_list])
+            .unwrap()
+            .wait()
+            .await
+            .unwrap();
         let copy_allocator: ID3D12CommandAllocator = unsafe {
             device
                 .CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_COPY)
@@ -579,7 +591,12 @@ mod tests {
                 },
             )
             .unwrap();
-        copy_queue.execute([&copy_list]).unwrap().wait().unwrap();
+        copy_queue
+            .execute([&copy_list])
+            .unwrap()
+            .wait()
+            .await
+            .unwrap();
         let ret = read_back_buffer.to_image().unwrap();
         let img = image::open("test_resource/fill.png").unwrap().to_rgba8();
         assert!(ret.iter().zip(img.iter()).all(|(a, b)| {

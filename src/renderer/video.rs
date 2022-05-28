@@ -1,6 +1,6 @@
 use super::*;
 use std::path::{Path, PathBuf};
-use std::sync::{mpsc, Arc, Mutex, MutexGuard};
+use tokio::sync::mpsc;
 use windows::Win32::Media::MediaFoundation::*;
 
 const MF_VERSION: u32 = (MF_SDK_VERSION << 16) | 0x0070;
@@ -133,22 +133,18 @@ impl Writer {
 unsafe impl Send for Writer {}
 
 struct Worker {
-    th: Option<std::thread::JoinHandle<()>>,
-    tx: Option<mpsc::Sender<(ReadBackBuffer, Signal)>>,
-    mtx: Arc<Mutex<()>>,
+    tx: mpsc::UnboundedSender<(ReadBackBuffer, Signal)>,
 }
 
 impl Worker {
     fn new(writer: Writer, end_frame: Option<u64>) -> Self {
-        let (tx, rx) = mpsc::channel::<(ReadBackBuffer, Signal)>();
-        let mtx = Arc::new(Mutex::new(()));
-        let mutex = mtx.clone();
-        let th = std::thread::spawn(move || {
+        let (tx, mut rx) = mpsc::unbounded_channel::<(ReadBackBuffer, Signal)>();
+        tokio::task::spawn(async move {
             let mut frame = 0;
             loop {
-                let (buffer, signal) = match rx.recv() {
-                    Ok(v) => v,
-                    Err(_) => {
+                let (buffer, signal) = match rx.recv().await {
+                    Some(v) => v,
+                    None => {
                         match writer.finalize() {
                             Ok(_) => info!("Video::worker: finalized"),
                             Err(e) => error!("Video::worker: {}", e),
@@ -157,8 +153,7 @@ impl Worker {
                     }
                 };
                 let img = {
-                    let _lock = mutex.lock().unwrap();
-                    if let Err(e) = signal.wait() {
+                    if let Err(e) = signal.wait().await {
                         error!("Video::worker: {}", e);
                         break;
                     }
@@ -185,18 +180,7 @@ impl Worker {
                 }
             }
         });
-        Self {
-            th: Some(th),
-            tx: Some(tx),
-            mtx,
-        }
-    }
-}
-
-impl Drop for Worker {
-    fn drop(&mut self) {
-        std::mem::drop(self.tx.take().unwrap());
-        self.th.take().unwrap().join().unwrap_or(());
+        Self { tx }
     }
 }
 
@@ -240,9 +224,9 @@ impl Video {
     }
 
     pub fn is_writing(&self) -> bool {
-        self.worker.as_ref().map_or(false, |worker| {
-            worker.th.as_ref().map_or(false, |th| !th.is_finished())
-        })
+        self.worker
+            .as_ref()
+            .map_or(false, |worker| !worker.tx.is_closed())
     }
 
     pub fn start(
@@ -269,12 +253,7 @@ impl Video {
     pub fn write(&self, buffer: ReadBackBuffer, signal: Signal) -> anyhow::Result<()> {
         if self.is_writing() {
             if let Some(worker) = self.worker.as_ref() {
-                worker
-                    .tx
-                    .as_ref()
-                    .unwrap()
-                    .send((buffer, signal))
-                    .unwrap_or(());
+                worker.tx.send((buffer, signal)).unwrap_or(());
             }
         }
         Ok(())
@@ -283,13 +262,5 @@ impl Video {
     pub fn stop(&mut self) {
         self.worker = None;
         self.timer = None;
-    }
-
-    pub fn lock(&self) -> Option<MutexGuard<()>> {
-        if self.is_writing() {
-            Some(self.worker.as_ref().unwrap().mtx.lock().unwrap())
-        } else {
-            None
-        }
     }
 }

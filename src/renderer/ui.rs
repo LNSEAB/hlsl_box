@@ -83,13 +83,13 @@ impl Ui {
         }
     }
 
-    pub fn resize(
+    pub async fn resize(
         &mut self,
         device: &ID3D12Device,
         size: wita::PhysicalSize<u32>,
     ) -> Result<(), Error> {
         let len = self.buffers.len();
-        self.signals.wait_all();
+        self.signals.wait_all().await;
         self.buffers.clear();
         self.context.flush();
         Self::create_buffers(
@@ -162,6 +162,10 @@ impl Ui {
 
 impl Drop for Ui {
     fn drop(&mut self) {
-        self.signals.wait_all();
+        tokio::task::block_in_place(|| {
+            tokio::runtime::Handle::current().block_on(async {
+                self.signals.wait_all().await;
+            });
+        });
     }
 }

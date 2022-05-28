@@ -17,10 +17,13 @@ impl Event {
         }
     }
 
-    pub fn wait(&self) {
-        unsafe {
-            WaitForSingleObject(self.0, INFINITE);
-        }
+    pub async fn wait(&self) {
+        let handle = self.0.clone();
+        tokio::task::spawn_blocking(move || unsafe {
+            WaitForSingleObject(handle, INFINITE);
+        })
+        .await
+        .unwrap();
     }
 
     pub fn handle(&self) -> HANDLE {

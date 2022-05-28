@@ -19,17 +19,18 @@ impl Signal {
         }
     }
 
-    pub fn wait(&self) -> Result<(), Error> {
+    pub async fn wait(&self) -> Result<(), Error> {
         if !self.is_completed() {
             let event = Event::new()?;
             self.set_event(&event)?;
-            event.wait();
+            event.wait().await;
         }
         Ok(())
     }
 }
 
 unsafe impl Send for Signal {}
+unsafe impl Sync for Signal {}
 
 pub struct Signals {
     signals: RefCell<Vec<Option<Signal>>>,
@@ -48,21 +49,21 @@ impl Signals {
         self.signals.borrow_mut()[index] = Some(signal);
     }
 
-    pub fn wait(&self, index: usize) {
+    pub async fn wait(&self, index: usize) {
         if let Some(signal) = self.signals.borrow_mut()[index].take() {
             if !signal.is_completed() {
                 signal.set_event(&self.event).unwrap();
-                self.event.wait();
+                self.event.wait().await;
             }
         }
     }
 
-    pub fn wait_all(&self) {
+    pub async fn wait_all(&self) {
         let mut signals = self.signals.borrow_mut();
         for signal in signals.iter_mut().flat_map(|s| s.take()) {
             if !signal.is_completed() {
                 signal.set_event(&self.event).unwrap();
-                self.event.wait();
+                self.event.wait().await;
             }
         }
     }
