@@ -525,16 +525,10 @@ impl Renderer {
             warn!("need to define swap_chain::buffer_count >= 2");
             2
         };
-        self.swap_chain.resize(
-            &self.d3d12_device,
-            Some(buffer_count),
-            resolution.into(),
-        )?;
-        let render_target = RenderTargetBuffers::new(
-            &self.d3d12_device,
-            resolution.into(),
-            buffer_count as _,
-        )?;
+        self.swap_chain
+            .resize(&self.d3d12_device, Some(buffer_count), resolution.into())?;
+        let render_target =
+            RenderTargetBuffers::new(&self.d3d12_device, resolution.into(), buffer_count as _)?;
         let pixel_shader = PixelShader::new(&self.d3d12_device, compiler, shader_model)?;
         let layer_shader = LayerShader::new(&self.d3d12_device, compiler, shader_model)?;
         let cmd_list = DirectCommandList::new(
@@ -547,8 +541,9 @@ impl Renderer {
         let mut cmd_allocators = Vec::with_capacity(buffer_count * Self::ALLOCATORS_PER_FRAME);
         for i in 0..buffer_count * Self::ALLOCATORS_PER_FRAME {
             unsafe {
-                let cmd_allocator: ID3D12CommandAllocator =
-                    self.d3d12_device.CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT)?;
+                let cmd_allocator: ID3D12CommandAllocator = self
+                    .d3d12_device
+                    .CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT)?;
                 cmd_allocator.SetName(format!("Renderer::cmd_allocators[{}]", i))?;
                 cmd_allocators.push(cmd_allocator);
             }
@@ -563,7 +558,9 @@ impl Renderer {
             frame_rate_tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
             RefCell::new(frame_rate_tick)
         });
-        self.ui.recreate_buffers(&self.d3d12_device, buffer_count).await?;
+        self.ui
+            .recreate_buffers(&self.d3d12_device, buffer_count)
+            .await?;
         self.signals = Signals::new(buffer_count);
         self.frame_rate_tick = frame_rate_tick;
         self.swap_chain
