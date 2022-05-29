@@ -1,6 +1,7 @@
 version = [1, 0]
 frame_counter = true
 auto_play = true
+max_frame_rate = 60
 
 [resolution]
 width = 640 
@@ -9,6 +10,10 @@ height = 480
 [shader]
 vs_args = []
 ps_args = []
+
+[swap_chain]
+buffer_count = 3
+max_frame_latency = 2
 
 [video]
 frame_rate = 30

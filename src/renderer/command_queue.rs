@@ -1,4 +1,5 @@
 use super::*;
+use std::sync::atomic::{self, AtomicU64};
 
 #[derive(Clone)]
 pub struct Signal {
@@ -93,7 +94,7 @@ impl Signals {
 pub(super) struct CommandQueue<T> {
     queue: ID3D12CommandQueue,
     fence: ID3D12Fence,
-    value: Cell<u64>,
+    value: AtomicU64,
     _t: std::marker::PhantomData<T>,
 }
 
@@ -114,7 +115,7 @@ where
             Ok(Self {
                 queue,
                 fence,
-                value: Cell::new(1),
+                value: AtomicU64::new(1),
                 _t: std::marker::PhantomData,
             })
         }
@@ -130,9 +131,9 @@ where
 
     pub fn signal(&self) -> Result<Signal, Error> {
         unsafe {
-            let value = self.value.get();
+            let value = self.value.load(atomic::Ordering::SeqCst);
             self.queue.Signal(&self.fence, value)?;
-            self.value.set(value + 1);
+            self.value.store(value + 1, atomic::Ordering::SeqCst);
             Ok(Signal {
                 fence: self.fence.clone(),
                 value,

@@ -45,6 +45,12 @@ pub struct Shader {
 }
 
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+pub struct SwapChain {
+    pub buffer_count: u32,
+    pub max_frame_latency: u32,
+}
+
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct Video {
     pub frame_rate: u32,
     pub end_frame: u64,
@@ -78,8 +84,10 @@ pub struct Settings {
     pub version: Version,
     pub frame_counter: bool,
     pub auto_play: bool,
+    pub max_frame_rate: u32,
     pub resolution: Resolution,
     pub shader: Shader,
+    pub swap_chain: SwapChain,
     pub video: Video,
     pub appearance: Appearance,
 }

@@ -311,6 +311,8 @@ impl Application {
             settings.resolution.into(),
             &compiler,
             shader_model,
+            Some(settings.max_frame_rate).filter(|v| *v > 0),
+            &settings.swap_chain,
         )
         .await?;
         let factory = renderer.mltg_factory();
@@ -708,7 +710,13 @@ impl Application {
         ];
         let ui_props = UiProperties::new(&settings, &self.ui_props.factory)?;
         self.renderer
-            .recreate(settings.resolution, &self.compiler, shader_model)
+            .recreate(
+                settings.resolution,
+                &self.compiler,
+                shader_model,
+                Some(settings.max_frame_rate).filter(|v| *v > 0),
+                &settings.swap_chain,
+            )
             .await?;
         self.window_manager.update_resolution(settings.resolution);
         let mut size = self.window_manager.main_window.inner_size();

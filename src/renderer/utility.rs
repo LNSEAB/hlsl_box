@@ -20,6 +20,10 @@ impl Event {
         }
     }
 
+    pub fn from_handle(handle: HANDLE) -> Self {
+        Self(handle)
+    }
+
     pub async fn wait(&self) {
         let handle = self.0;
         tokio::task::spawn_blocking(move || unsafe {
@@ -27,6 +31,10 @@ impl Event {
         })
         .await
         .unwrap();
+    }
+
+    pub fn is_signaled(&self) -> bool {
+        unsafe { WaitForSingleObject(self.0, 0) == 0 }
     }
 
     pub fn handle(&self) -> HANDLE {
