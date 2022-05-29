@@ -514,7 +514,11 @@ impl Renderer {
         setting: &settings::SwapChain,
     ) -> anyhow::Result<()> {
         self.wait_all_signals().await;
-        self.swap_chain.resize(&self.d3d12_device, Some(setting.buffer_count), resolution.into())?;
+        self.swap_chain.resize(
+            &self.d3d12_device,
+            Some(setting.buffer_count),
+            resolution.into(),
+        )?;
         let render_target = RenderTargetBuffers::new(
             &self.d3d12_device,
             resolution.into(),

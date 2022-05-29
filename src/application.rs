@@ -649,9 +649,13 @@ impl Application {
                     Some(&r.parameters),
                     &self.state,
                 ),
-                _ => self
-                    .renderer
-                    .render(self.settings.vsync, self.clear_color, None, None, &self.state),
+                _ => self.renderer.render(
+                    self.settings.vsync,
+                    self.clear_color,
+                    None,
+                    None,
+                    &self.state,
+                ),
             };
             if let Err(e) = ret.await {
                 error!("render: {}", e);
