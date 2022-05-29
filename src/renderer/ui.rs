@@ -104,6 +104,34 @@ impl Ui {
         Ok(())
     }
 
+    pub async fn recreate_buffers(&mut self, device: &ID3D12Device, buffer_count: usize) -> Result<(), Error> {
+        self.signals.wait_all().await;
+        self.buffers.clear();
+        self.context.flush();
+        let desc_heap = unsafe {
+            let desc_heap: ID3D12DescriptorHeap = device.CreateDescriptorHeap(&D3D12_DESCRIPTOR_HEAP_DESC {
+                Type: D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV,
+                NumDescriptors: buffer_count as _,
+                Flags: D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE,
+                ..Default::default()
+            })?;
+            desc_heap.SetName("Ui::desc_heap")?;
+            desc_heap
+        };
+        self.desc_heap = desc_heap;
+        Self::create_buffers(
+            device,
+            &self.context,
+            &self.desc_heap,
+            self.desc_size,
+            buffer_count,
+            self.window.inner_size(),
+            &mut self.buffers,
+        )?;
+        self.signals = Signals::new(buffer_count);
+        Ok(())
+    }
+
     pub fn create_factory(&self) -> mltg::Factory {
         self.context.create_factory()
     }

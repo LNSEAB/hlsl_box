@@ -12,7 +12,7 @@ use once_cell::sync::Lazy;
 use std::cell::RefCell;
 use std::rc::Rc;
 use std::sync::Arc;
-use tracing::{debug, error, info};
+use tracing::{debug, error, warn, info};
 use windows::Win32::{Globalization::*, System::Com::*};
 
 use application::{Application, Method};
