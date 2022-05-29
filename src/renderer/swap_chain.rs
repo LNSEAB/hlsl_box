@@ -132,13 +132,11 @@ impl SwapChain {
                 desc.Flags,
             )?;
             if let Some(buffer_count) = buffer_count {
-                self.rtv_heap = device.CreateDescriptorHeap(
-                    &D3D12_DESCRIPTOR_HEAP_DESC {
-                        Type: D3D12_DESCRIPTOR_HEAP_TYPE_RTV,
-                        NumDescriptors: buffer_count,
-                        ..Default::default()
-                    }
-                )?;
+                self.rtv_heap = device.CreateDescriptorHeap(&D3D12_DESCRIPTOR_HEAP_DESC {
+                    Type: D3D12_DESCRIPTOR_HEAP_TYPE_RTV,
+                    NumDescriptors: buffer_count,
+                    ..Default::default()
+                })?;
             }
             self.back_buffers =
                 Self::create_back_buffers(device, &self.swap_chain, &self.rtv_heap, self.rtv_size)?;
