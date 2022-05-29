@@ -85,6 +85,7 @@ pub struct Settings {
     pub frame_counter: bool,
     pub auto_play: bool,
     pub max_frame_rate: u32,
+    pub vsync: u32,
     pub resolution: Resolution,
     pub shader: Shader,
     pub swap_chain: SwapChain,

@@ -218,7 +218,7 @@ pub struct Renderer {
     adjusted_plane: plane::Buffer,
     read_back_buffers: Arc<Pool<ReadBackBuffer>>,
     video: video::Video,
-    frame_rate_tick: Option<std::sync::Mutex<tokio::time::Interval>>,
+    frame_rate_tick: Option<RefCell<tokio::time::Interval>>,
 }
 
 impl Renderer {
@@ -278,7 +278,7 @@ impl Renderer {
                 let mut frame_rate_tick =
                     tokio::time::interval(std::time::Duration::from_micros(1_000_000 / fps as u64));
                 frame_rate_tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
-                std::sync::Mutex::new(frame_rate_tick)
+                RefCell::new(frame_rate_tick)
             });
             Ok(Self {
                 d3d12_device: d3d12_device.clone(),
@@ -314,6 +314,7 @@ impl Renderer {
             .create_pipeline(name, &self.d3d12_device, ps)
     }
 
+    #[allow(clippy::await_holding_refcell_ref)]
     pub async fn render(
         &self,
         interval: u32,
@@ -323,7 +324,8 @@ impl Renderer {
         r: &impl RenderUi,
     ) -> anyhow::Result<()> {
         if let Some(frame_rate_tick) = self.frame_rate_tick.as_ref() {
-            frame_rate_tick.lock().unwrap().tick().await;
+            let mut frame_rate_tick = frame_rate_tick.borrow_mut();
+            frame_rate_tick.tick().await;
         }
         let index = self.swap_chain.current_buffer();
         self.signals.wait(index).await;
@@ -456,7 +458,7 @@ impl Renderer {
 
     pub async fn resize(&mut self, size: wita::PhysicalSize<u32>) -> Result<(), Error> {
         self.wait_all_signals().await;
-        self.swap_chain.resize(&self.d3d12_device, size)?;
+        self.swap_chain.resize(&self.d3d12_device, None, size)?;
         self.ui.resize(&self.d3d12_device, size).await?;
         Ok(())
     }
@@ -468,7 +470,7 @@ impl Renderer {
 
     pub async fn restore(&mut self, size: wita::PhysicalSize<u32>) -> Result<(), Error> {
         self.wait_all_signals().await;
-        self.swap_chain.resize(&self.d3d12_device, size)?;
+        self.swap_chain.resize(&self.d3d12_device, None, size)?;
         self.ui.resize(&self.d3d12_device, size).await?;
         self.adjusted_plane
             .replace(
@@ -482,7 +484,7 @@ impl Renderer {
 
     pub async fn maximize(&mut self, size: wita::PhysicalSize<u32>) -> Result<(), Error> {
         self.wait_all_signals().await;
-        self.swap_chain.resize(&self.d3d12_device, size)?;
+        self.swap_chain.resize(&self.d3d12_device, None, size)?;
         let size_f = size.cast::<f32>();
         let resolution = self.render_target.size().cast::<f32>();
         let aspect_size = size_f.width / size_f.height;
@@ -512,9 +514,10 @@ impl Renderer {
         setting: &settings::SwapChain,
     ) -> anyhow::Result<()> {
         self.wait_all_signals().await;
+        self.swap_chain.resize(&self.d3d12_device, Some(setting.buffer_count), resolution.into())?;
         let render_target = RenderTargetBuffers::new(
             &self.d3d12_device,
-            wita::PhysicalSize::new(resolution.width, resolution.height),
+            resolution.into(),
             setting.buffer_count as _,
         )?;
         let pixel_shader = PixelShader::new(&self.d3d12_device, compiler, shader_model)?;
@@ -532,7 +535,7 @@ impl Renderer {
             let mut frame_rate_tick =
                 tokio::time::interval(std::time::Duration::from_micros(1_000_000 / fps as u64));
             frame_rate_tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
-            std::sync::Mutex::new(frame_rate_tick)
+            RefCell::new(frame_rate_tick)
         });
         self.frame_rate_tick = frame_rate_tick;
         self.swap_chain

@@ -2,6 +2,7 @@ version = [1, 0]
 frame_counter = true
 auto_play = true
 max_frame_rate = 60
+vsync = 1
 
 [resolution]
 width = 640 

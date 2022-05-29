@@ -118,13 +118,14 @@ impl SwapChain {
     pub fn resize(
         &mut self,
         device: &ID3D12Device,
+        buffer_count: Option<u32>,
         size: wita::PhysicalSize<u32>,
     ) -> Result<(), Error> {
         self.back_buffers.clear();
         unsafe {
             let desc = self.swap_chain.GetDesc1().unwrap();
             self.swap_chain.ResizeBuffers(
-                0,
+                buffer_count.unwrap_or(0),
                 size.width,
                 size.height,
                 DXGI_FORMAT_UNKNOWN,
