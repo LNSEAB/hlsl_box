@@ -60,12 +60,12 @@ pub(super) struct Buffer {
 impl Buffer {
     const BUFFER_SIZE: u64 = std::mem::size_of::<Meshes>() as _;
 
-    pub fn new(
+    pub async fn new(
         device: &ID3D12Device,
         copy_queue: &CommandQueue<CopyCommandList>,
     ) -> Result<Self, Error> {
         let buffer = DefaultBuffer::new("plane::Buffer::buffer", device, Self::BUFFER_SIZE)?;
-        Self::copy_buffer(device, copy_queue, &buffer, &Meshes::new(1.0, 1.0))?;
+        Self::copy_buffer(device, copy_queue, &buffer, &Meshes::new(1.0, 1.0)).await?;
         let vbv = D3D12_VERTEX_BUFFER_VIEW {
             BufferLocation: buffer.0.gpu_virtual_address(),
             SizeInBytes: Meshes::vertices_size() as _,
@@ -83,16 +83,16 @@ impl Buffer {
         Meshes::new(1.0, 1.0).indices_len()
     }
 
-    pub fn replace(
+    pub async fn replace(
         &self,
         device: &ID3D12Device,
         copy_queue: &CommandQueue<CopyCommandList>,
         plane: &Meshes,
     ) -> Result<(), Error> {
-        Self::copy_buffer(device, copy_queue, &self.buffer, plane)
+        Self::copy_buffer(device, copy_queue, &self.buffer, plane).await
     }
 
-    fn copy_buffer(
+    async fn copy_buffer(
         device: &ID3D12Device,
         copy_queue: &CommandQueue<CopyCommandList>,
         buffer: &DefaultBuffer,
@@ -118,7 +118,7 @@ impl Buffer {
                     cmd.barrier([buffer.leave()]);
                 },
             )?;
-            copy_queue.execute([&cmd_list])?.wait()?;
+            copy_queue.execute([&cmd_list])?.wait().await?;
             Ok(())
         }
     }

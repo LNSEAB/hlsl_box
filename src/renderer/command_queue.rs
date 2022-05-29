@@ -1,4 +1,5 @@
 use super::*;
+use std::sync::atomic::{self, AtomicU64};
 
 #[derive(Clone)]
 pub struct Signal {
@@ -19,17 +20,18 @@ impl Signal {
         }
     }
 
-    pub fn wait(&self) -> Result<(), Error> {
+    pub async fn wait(&self) -> Result<(), Error> {
         if !self.is_completed() {
             let event = Event::new()?;
             self.set_event(&event)?;
-            event.wait();
+            event.wait().await;
         }
         Ok(())
     }
 }
 
 unsafe impl Send for Signal {}
+unsafe impl Sync for Signal {}
 
 pub struct Signals {
     signals: RefCell<Vec<Option<Signal>>>,
@@ -48,21 +50,27 @@ impl Signals {
         self.signals.borrow_mut()[index] = Some(signal);
     }
 
-    pub fn wait(&self, index: usize) {
-        if let Some(signal) = self.signals.borrow_mut()[index].take() {
+    pub async fn wait(&self, index: usize) {
+        let signal = self.signals.borrow_mut()[index].take();
+        if let Some(signal) = signal {
             if !signal.is_completed() {
                 signal.set_event(&self.event).unwrap();
-                self.event.wait();
+                self.event.wait().await;
             }
         }
     }
 
-    pub fn wait_all(&self) {
-        let mut signals = self.signals.borrow_mut();
-        for signal in signals.iter_mut().flat_map(|s| s.take()) {
+    pub async fn wait_all(&self) {
+        let signals = self
+            .signals
+            .borrow_mut()
+            .iter_mut()
+            .flat_map(|s| s.take())
+            .collect::<Vec<_>>();
+        for signal in signals {
             if !signal.is_completed() {
                 signal.set_event(&self.event).unwrap();
-                self.event.wait();
+                self.event.wait().await;
             }
         }
     }
@@ -86,7 +94,7 @@ impl Signals {
 pub(super) struct CommandQueue<T> {
     queue: ID3D12CommandQueue,
     fence: ID3D12Fence,
-    value: Cell<u64>,
+    value: AtomicU64,
     _t: std::marker::PhantomData<T>,
 }
 
@@ -107,7 +115,7 @@ where
             Ok(Self {
                 queue,
                 fence,
-                value: Cell::new(1),
+                value: AtomicU64::new(1),
                 _t: std::marker::PhantomData,
             })
         }
@@ -123,9 +131,9 @@ where
 
     pub fn signal(&self) -> Result<Signal, Error> {
         unsafe {
-            let value = self.value.get();
+            let value = self.value.load(atomic::Ordering::SeqCst);
             self.queue.Signal(&self.fence, value)?;
-            self.value.set(value + 1);
+            self.value.store(value + 1, atomic::Ordering::SeqCst);
             Ok(Signal {
                 fence: self.fence.clone(),
                 value,

@@ -1,5 +1,8 @@
 use crate::error::Error;
+use std::collections::VecDeque;
 use std::mem::ManuallyDrop;
+use std::sync::{Arc, Mutex};
+use tokio::sync::Notify;
 use windows::Win32::{
     Foundation::{CloseHandle, HANDLE},
     Graphics::{Direct3D12::*, Dxgi::Common::*},
@@ -17,10 +20,21 @@ impl Event {
         }
     }
 
-    pub fn wait(&self) {
-        unsafe {
-            WaitForSingleObject(self.0, INFINITE);
-        }
+    pub fn from_handle(handle: HANDLE) -> Self {
+        Self(handle)
+    }
+
+    pub async fn wait(&self) {
+        let handle = self.0;
+        tokio::task::spawn_blocking(move || unsafe {
+            WaitForSingleObject(handle, INFINITE);
+        })
+        .await
+        .unwrap();
+    }
+
+    pub fn is_signaled(&self) -> bool {
+        unsafe { WaitForSingleObject(self.0, 0) == 0 }
     }
 
     pub fn handle(&self) -> HANDLE {
@@ -278,5 +292,93 @@ impl From<Texture2D> for ID3D12Resource {
 impl<'a> From<&'a Texture2D> for &'a ID3D12Resource {
     fn from(src: &'a Texture2D) -> Self {
         &src.0
+    }
+}
+
+#[derive(Clone)]
+pub struct PoolElement<T> {
+    pool: Arc<Pool<T>>,
+    elem: Option<T>,
+}
+
+impl<T> std::ops::Deref for PoolElement<T> {
+    type Target = T;
+
+    fn deref(&self) -> &Self::Target {
+        self.elem.as_ref().unwrap()
+    }
+}
+
+impl<T> std::ops::DerefMut for PoolElement<T> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        self.elem.as_mut().unwrap()
+    }
+}
+
+impl<T> Drop for PoolElement<T> {
+    fn drop(&mut self) {
+        let mut queue = self.pool.queue.lock().unwrap();
+        queue.push_back(self.elem.take().unwrap());
+        self.pool.notify.notify_one();
+    }
+}
+
+pub struct Pool<T> {
+    queue: Mutex<VecDeque<T>>,
+    notify: Notify,
+}
+
+impl<T> Pool<T> {
+    pub fn with_initializer(
+        n: usize,
+        f: impl Fn(usize) -> anyhow::Result<T>,
+    ) -> anyhow::Result<Arc<Self>> {
+        let mut v = VecDeque::new();
+        for i in 0..n {
+            v.push_back(f(i)?);
+        }
+        Ok(Arc::new(Self {
+            queue: Mutex::new(v),
+            notify: Notify::new(),
+        }))
+    }
+
+    pub async fn pop(self: &Arc<Self>) -> PoolElement<T> {
+        let elem = loop {
+            {
+                let mut pool = self.queue.lock().unwrap();
+                if !pool.is_empty() {
+                    break pool.pop_front();
+                }
+            }
+            self.notify.notified().await;
+        };
+        PoolElement {
+            pool: self.clone(),
+            elem,
+        }
+    }
+
+    pub async fn pop_if(self: &Arc<Self>, pred: impl Fn(&T) -> bool) -> PoolElement<T> {
+        let elem = 'elem: loop {
+            {
+                let pool = self.queue.lock().unwrap();
+                if !pool.is_empty() {
+                    std::mem::drop(pool);
+                    loop {
+                        let mut pool = self.queue.lock().unwrap();
+                        if pred(pool.front().unwrap()) {
+                            break 'elem pool.pop_front();
+                        }
+                        pool.rotate_left(1);
+                    }
+                }
+            }
+            self.notify.notified().await;
+        };
+        PoolElement {
+            pool: self.clone(),
+            elem,
+        }
     }
 }

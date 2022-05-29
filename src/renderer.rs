@@ -10,7 +10,7 @@ mod utility;
 mod video;
 
 use crate::*;
-use std::cell::{Cell, RefCell};
+use std::cell::RefCell;
 use std::path::Path;
 use windows::core::{Interface, PCSTR};
 use windows::Win32::{
@@ -208,6 +208,7 @@ pub struct Renderer {
     render_target: RenderTargetBuffers,
     pixel_shader: PixelShader,
     cmd_allocators: Vec<ID3D12CommandAllocator>,
+    copy_allocators: Arc<Pool<(ID3D12CommandAllocator, Option<Signal>)>>,
     cmd_list: DirectCommandList,
     signals: Signals,
     ui: Ui,
@@ -215,45 +216,52 @@ pub struct Renderer {
     main_queue: PresentableQueue,
     filling_plane: plane::Buffer,
     adjusted_plane: plane::Buffer,
-    read_back_buffer: ReadBackBuffer,
+    read_back_buffers: Arc<Pool<ReadBackBuffer>>,
     video: video::Video,
+    frame_rate_tick: Option<RefCell<tokio::time::Interval>>,
 }
 
 impl Renderer {
     const ALLOCATORS_PER_FRAME: usize = 2;
-    const BUFFER_COUNT: usize = 2;
-    const COPY_ALLOCATOR: usize = Self::ALLOCATORS_PER_FRAME * Self::BUFFER_COUNT;
+    const COPY_ALLOCATOR_COUNT: usize = 3;
+    const READ_BACK_BUFFER_COUNT: usize = 3;
 
-    pub fn new(
+    pub async fn new(
         d3d12_device: &ID3D12Device,
         window: &wita::Window,
         resolution: wita::PhysicalSize<u32>,
         compiler: &hlsl::Compiler,
         shader_model: hlsl::ShaderModel,
+        max_frame_rate: Option<u32>,
+        setting: &settings::SwapChain,
     ) -> anyhow::Result<Self> {
         unsafe {
-            let (swap_chain, presentable_queue) =
-                SwapChain::new(d3d12_device, window, Self::BUFFER_COUNT)?;
-            let mut cmd_allocators =
-                Vec::with_capacity(Self::BUFFER_COUNT * Self::ALLOCATORS_PER_FRAME);
-            for i in 0..Self::BUFFER_COUNT * Self::ALLOCATORS_PER_FRAME {
+            let buffer_count = setting.buffer_count as usize;
+            let (swap_chain, presentable_queue) = SwapChain::new(
+                d3d12_device,
+                window,
+                buffer_count,
+                setting.max_frame_latency,
+            )?;
+            let mut cmd_allocators = Vec::with_capacity(buffer_count * Self::ALLOCATORS_PER_FRAME);
+            for i in 0..buffer_count * Self::ALLOCATORS_PER_FRAME {
                 let cmd_allocator: ID3D12CommandAllocator =
                     d3d12_device.CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT)?;
                 cmd_allocator.SetName(format!("Renderer::cmd_allocators[{}]", i))?;
                 cmd_allocators.push(cmd_allocator);
             }
-            cmd_allocators.push(d3d12_device.CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_COPY)?);
-            cmd_allocators[Self::COPY_ALLOCATOR].SetName(format!(
-                "Renderer::cmd_allocators[{}]",
-                Self::COPY_ALLOCATOR
-            ))?;
+            let copy_allocators = Pool::with_initializer(Self::COPY_ALLOCATOR_COUNT, |i| {
+                let allocator: ID3D12CommandAllocator =
+                    d3d12_device.CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_COPY)?;
+                allocator.SetName(format!("Renderer::copy_allocator[{}]", i))?;
+                Ok((allocator, None))
+            })?;
             let copy_queue = CommandQueue::new("Renderer::copy_queue", d3d12_device)?;
-            let render_target =
-                RenderTargetBuffers::new(d3d12_device, resolution, Self::BUFFER_COUNT)?;
+            let render_target = RenderTargetBuffers::new(d3d12_device, resolution, buffer_count)?;
             let pixel_shader = PixelShader::new(d3d12_device, compiler, shader_model)?;
-            let ui = Ui::new(d3d12_device, Self::BUFFER_COUNT, window)?;
-            let filling_plane = plane::Buffer::new(d3d12_device, &copy_queue)?;
-            let adjusted_plane = plane::Buffer::new(d3d12_device, &copy_queue)?;
+            let ui = Ui::new(d3d12_device, buffer_count, window)?;
+            let filling_plane = plane::Buffer::new(d3d12_device, &copy_queue).await?;
+            let adjusted_plane = plane::Buffer::new(d3d12_device, &copy_queue).await?;
             let layer_shader = LayerShader::new(d3d12_device, compiler, shader_model)?;
             let cmd_list = DirectCommandList::new(
                 "Renderer::cmd_list",
@@ -262,14 +270,23 @@ impl Renderer {
                 layer_shader,
             )?;
             let signals = Signals::new(cmd_allocators.len());
-            let read_back_buffer = ReadBackBuffer::new(d3d12_device, resolution)?;
+            let read_back_buffers = Pool::with_initializer(Self::READ_BACK_BUFFER_COUNT, |_| {
+                ReadBackBuffer::new(d3d12_device, resolution).map_err(|e| e.into())
+            })?;
             let video = video::Video::new()?;
+            let frame_rate_tick = max_frame_rate.map(|fps| {
+                let mut frame_rate_tick =
+                    tokio::time::interval(std::time::Duration::from_micros(1_000_000 / fps as u64));
+                frame_rate_tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+                RefCell::new(frame_rate_tick)
+            });
             Ok(Self {
                 d3d12_device: d3d12_device.clone(),
                 swap_chain,
                 render_target,
                 pixel_shader,
                 cmd_allocators,
+                copy_allocators,
                 cmd_list,
                 signals,
                 ui,
@@ -277,8 +294,9 @@ impl Renderer {
                 main_queue: presentable_queue,
                 filling_plane,
                 adjusted_plane,
-                read_back_buffer,
+                read_back_buffers,
                 video,
+                frame_rate_tick,
             })
         }
     }
@@ -296,7 +314,8 @@ impl Renderer {
             .create_pipeline(name, &self.d3d12_device, ps)
     }
 
-    pub fn render(
+    #[allow(clippy::await_holding_refcell_ref)]
+    pub async fn render(
         &self,
         interval: u32,
         clear_color: [f32; 4],
@@ -304,8 +323,12 @@ impl Renderer {
         parameters: Option<&pixel_shader::Parameters>,
         r: &impl RenderUi,
     ) -> anyhow::Result<()> {
+        if let Some(frame_rate_tick) = self.frame_rate_tick.as_ref() {
+            let mut frame_rate_tick = frame_rate_tick.borrow_mut();
+            frame_rate_tick.tick().await;
+        }
         let index = self.swap_chain.current_buffer();
-        self.signals.wait(index);
+        self.signals.wait(index).await;
         let current_index = index * Self::ALLOCATORS_PER_FRAME;
         let cmd_allocators =
             &self.cmd_allocators[current_index..current_index + Self::ALLOCATORS_PER_FRAME];
@@ -319,7 +342,7 @@ impl Renderer {
                     let shader = self.pixel_shader.apply(ps, parameters);
                     let target = self.render_target.target(index);
                     cmd.barrier([target.enter()]);
-                    cmd.clear(&target, clear_color);
+                    cmd.clear(&target, [0.0, 0.0, 0.0, 0.0]);
                     cmd.draw(&shader, &target, &self.filling_plane);
                     cmd.barrier([target.leave()]);
                 }
@@ -331,24 +354,29 @@ impl Renderer {
         let main_signal = self.main_queue.execute([cmd_list])?;
         let mut copy_signal = None;
         if self.video.signal() {
+            let copy_allocator = self
+                .copy_allocators
+                .pop_if(|(_, signal)| signal.as_ref().map_or(true, |s| s.is_completed()))
+                .await;
+            let read_back_buffer = self.read_back_buffers.pop().await;
             let cmd_list = CopyCommandList::new(
                 "Renderer::render write video",
                 &self.d3d12_device,
-                &self.cmd_allocators[Self::COPY_ALLOCATOR],
+                &copy_allocator.0,
             )?;
             let src = self.render_target.copy_resource(index);
             cmd_list.record(
-                &self.cmd_allocators[Self::COPY_ALLOCATOR],
+                &copy_allocator.0,
                 |cmd: CopyCommand<CopyResource, ReadBackBuffer>| {
                     cmd.barrier([src.enter()]);
-                    cmd.copy(&src, &self.read_back_buffer);
+                    cmd.copy(&src, &*read_back_buffer);
                     cmd.barrier([src.leave()]);
                 },
             )?;
             self.copy_queue.wait(&main_signal)?;
             let signal = self.copy_queue.execute([&cmd_list])?;
             copy_signal = Some(signal.clone());
-            self.video.write(self.read_back_buffer.clone(), signal)?;
+            self.video.write(read_back_buffer, signal)?;
         }
         cmd_list.record(&cmd_allocators[1], |cmd| {
             cmd.barrier([ui_buffer.enter()]);
@@ -357,8 +385,12 @@ impl Renderer {
         })?;
         let ui_signal = self.ui.render(index, r)?;
         self.main_queue.wait(&ui_signal)?;
-        self.main_queue.execute([cmd_list])?;
-        let signal = self.main_queue.present(interval)?;
+        let signal = if self.swap_chain.is_signaled() {
+            self.main_queue.execute([cmd_list])?;
+            self.main_queue.present(interval).await?
+        } else {
+            self.main_queue.execute([cmd_list])?
+        };
         if let Some(copy_signal) = copy_signal.as_ref() {
             self.main_queue.wait(copy_signal)?;
         }
@@ -366,8 +398,8 @@ impl Renderer {
         Ok(())
     }
 
-    pub fn wait_all_signals(&self) {
-        self.signals.wait_all();
+    pub async fn wait_all_signals(&self) {
+        self.signals.wait_all().await;
     }
 
     pub fn start_video(
@@ -393,37 +425,41 @@ impl Renderer {
         self.video.stop();
     }
 
-    pub fn screen_shot(&self) -> anyhow::Result<Option<image::RgbaImage>> {
-        let _lock = self.video.lock();
+    pub async fn screen_shot(&self) -> anyhow::Result<Option<image::RgbaImage>> {
         let frame = self.signals.last_frame();
         if frame.is_none() {
             return Ok(None);
         }
         let (index, frame) = frame.unwrap();
+        let copy_allocator = self
+            .copy_allocators
+            .pop_if(|(_, signal)| signal.as_ref().map_or(true, |s| s.is_completed()))
+            .await;
         let cmd_list = CopyCommandList::new(
             "Renderer::screen_shot",
             &self.d3d12_device,
-            &self.cmd_allocators[Self::COPY_ALLOCATOR],
+            &copy_allocator.0,
         )?;
         let src = self.render_target.copy_resource(index);
+        let read_back_buffer = self.read_back_buffers.pop().await;
         cmd_list.record(
-            &self.cmd_allocators[Self::COPY_ALLOCATOR],
+            &copy_allocator.0,
             |cmd: CopyCommand<CopyResource, ReadBackBuffer>| {
                 cmd.barrier([src.enter()]);
-                cmd.copy(&src, &self.read_back_buffer);
+                cmd.copy(&src, &*read_back_buffer);
                 cmd.barrier([src.leave()]);
             },
         )?;
         self.copy_queue.wait(&frame)?;
-        self.copy_queue.execute([&cmd_list])?.wait()?;
-        let img = self.read_back_buffer.to_image()?;
+        self.copy_queue.execute([&cmd_list])?.wait().await?;
+        let img = read_back_buffer.to_image()?;
         Ok(Some(img))
     }
 
-    pub fn resize(&mut self, size: wita::PhysicalSize<u32>) -> Result<(), Error> {
-        self.wait_all_signals();
-        self.swap_chain.resize(&self.d3d12_device, size)?;
-        self.ui.resize(&self.d3d12_device, size)?;
+    pub async fn resize(&mut self, size: wita::PhysicalSize<u32>) -> Result<(), Error> {
+        self.wait_all_signals().await;
+        self.swap_chain.resize(&self.d3d12_device, None, size)?;
+        self.ui.resize(&self.d3d12_device, size).await?;
         Ok(())
     }
 
@@ -432,21 +468,23 @@ impl Renderer {
         Ok(())
     }
 
-    pub fn restore(&mut self, size: wita::PhysicalSize<u32>) -> Result<(), Error> {
-        self.wait_all_signals();
-        self.swap_chain.resize(&self.d3d12_device, size)?;
-        self.ui.resize(&self.d3d12_device, size)?;
-        self.adjusted_plane.replace(
-            &self.d3d12_device,
-            &self.copy_queue,
-            &plane::Meshes::new(1.0, 1.0),
-        )?;
+    pub async fn restore(&mut self, size: wita::PhysicalSize<u32>) -> Result<(), Error> {
+        self.wait_all_signals().await;
+        self.swap_chain.resize(&self.d3d12_device, None, size)?;
+        self.ui.resize(&self.d3d12_device, size).await?;
+        self.adjusted_plane
+            .replace(
+                &self.d3d12_device,
+                &self.copy_queue,
+                &plane::Meshes::new(1.0, 1.0),
+            )
+            .await?;
         Ok(())
     }
 
-    pub fn maximize(&mut self, size: wita::PhysicalSize<u32>) -> Result<(), Error> {
-        self.wait_all_signals();
-        self.swap_chain.resize(&self.d3d12_device, size)?;
+    pub async fn maximize(&mut self, size: wita::PhysicalSize<u32>) -> Result<(), Error> {
+        self.wait_all_signals().await;
+        self.swap_chain.resize(&self.d3d12_device, None, size)?;
         let size_f = size.cast::<f32>();
         let resolution = self.render_target.size().cast::<f32>();
         let aspect_size = size_f.width / size_f.height;
@@ -456,26 +494,35 @@ impl Renderer {
         } else {
             [aspect_resolution / aspect_size, 1.0]
         };
-        self.adjusted_plane.replace(
-            &self.d3d12_device,
-            &self.copy_queue,
-            &plane::Meshes::new(s[0], s[1]),
-        )?;
-        self.ui.resize(&self.d3d12_device, size)?;
+        self.adjusted_plane
+            .replace(
+                &self.d3d12_device,
+                &self.copy_queue,
+                &plane::Meshes::new(s[0], s[1]),
+            )
+            .await?;
+        self.ui.resize(&self.d3d12_device, size).await?;
         Ok(())
     }
 
-    pub fn recreate(
+    pub async fn recreate(
         &mut self,
         resolution: settings::Resolution,
         compiler: &hlsl::Compiler,
         shader_model: hlsl::ShaderModel,
-    ) -> Result<(), Error> {
-        self.wait_all_signals();
+        max_frame_rate: Option<u32>,
+        setting: &settings::SwapChain,
+    ) -> anyhow::Result<()> {
+        self.wait_all_signals().await;
+        self.swap_chain.resize(
+            &self.d3d12_device,
+            Some(setting.buffer_count),
+            resolution.into(),
+        )?;
         let render_target = RenderTargetBuffers::new(
             &self.d3d12_device,
-            wita::PhysicalSize::new(resolution.width, resolution.height),
-            Self::BUFFER_COUNT,
+            resolution.into(),
+            setting.buffer_count as _,
         )?;
         let pixel_shader = PixelShader::new(&self.d3d12_device, compiler, shader_model)?;
         let layer_shader = LayerShader::new(&self.d3d12_device, compiler, shader_model)?;
@@ -485,7 +532,18 @@ impl Renderer {
             &self.cmd_allocators[0],
             layer_shader,
         )?;
-        self.read_back_buffer = ReadBackBuffer::new(&self.d3d12_device, resolution.into())?;
+        self.read_back_buffers = Pool::with_initializer(Self::READ_BACK_BUFFER_COUNT, |_| {
+            ReadBackBuffer::new(&self.d3d12_device, resolution.into()).map_err(|e| e.into())
+        })?;
+        let frame_rate_tick = max_frame_rate.map(|fps| {
+            let mut frame_rate_tick =
+                tokio::time::interval(std::time::Duration::from_micros(1_000_000 / fps as u64));
+            frame_rate_tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+            RefCell::new(frame_rate_tick)
+        });
+        self.frame_rate_tick = frame_rate_tick;
+        self.swap_chain
+            .set_max_frame_latency(setting.max_frame_latency)?;
         self.render_target = render_target;
         self.pixel_shader = pixel_shader;
         self.cmd_list = cmd_list;
@@ -495,7 +553,11 @@ impl Renderer {
 
 impl Drop for Renderer {
     fn drop(&mut self) {
-        self.wait_all_signals();
+        tokio::task::block_in_place(|| {
+            tokio::runtime::Handle::current().block_on(async {
+                self.wait_all_signals().await;
+            });
+        });
     }
 }
 
@@ -503,8 +565,8 @@ impl Drop for Renderer {
 mod tests {
     use super::*;
 
-    #[test]
-    fn render_fill_test() {
+    #[tokio::test]
+    async fn render_fill_test() {
         let device: ID3D12Device = unsafe {
             let mut device = None;
             D3D12CreateDevice(None, D3D_FEATURE_LEVEL_12_1, &mut device).unwrap();
@@ -529,7 +591,7 @@ mod tests {
             CommandQueue::<DirectCommandList>::new("render_test::cmd_queue", &device).unwrap();
         let copy_queue =
             CommandQueue::<CopyCommandList>::new("render_test::copy_queue", &device).unwrap();
-        let plane = plane::Buffer::new(&device, &copy_queue).unwrap();
+        let plane = plane::Buffer::new(&device, &copy_queue).await.unwrap();
         let pixel_shader = PixelShader::new(&device, &compiler, shader_model).unwrap();
         let resolution = wita::PhysicalSize::new(640, 480);
         let blob = compiler
@@ -559,7 +621,12 @@ mod tests {
                 cmd.barrier([target.leave()]);
             })
             .unwrap();
-        cmd_queue.execute([&cmd_list]).unwrap().wait().unwrap();
+        cmd_queue
+            .execute([&cmd_list])
+            .unwrap()
+            .wait()
+            .await
+            .unwrap();
         let copy_allocator: ID3D12CommandAllocator = unsafe {
             device
                 .CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_COPY)
@@ -579,7 +646,12 @@ mod tests {
                 },
             )
             .unwrap();
-        copy_queue.execute([&copy_list]).unwrap().wait().unwrap();
+        copy_queue
+            .execute([&copy_list])
+            .unwrap()
+            .wait()
+            .await
+            .unwrap();
         let ret = read_back_buffer.to_image().unwrap();
         let img = image::open("test_resource/fill.png").unwrap().to_rgba8();
         assert!(ret.iter().zip(img.iter()).all(|(a, b)| {
