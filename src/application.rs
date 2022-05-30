@@ -1,5 +1,6 @@
 mod error_message;
 mod frame_counter;
+mod message_board;
 
 use crate::*;
 use std::{
@@ -12,6 +13,7 @@ use windows::Win32::Graphics::{Direct3D::*, Direct3D12::*};
 
 use error_message::*;
 use frame_counter::*;
+use message_board::*;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Method {
@@ -118,18 +120,13 @@ struct Rendering {
     ps: pixel_shader::Pipeline,
     frame_counter: FrameCounter,
     show_frame_counter: Rc<Cell<bool>>,
+    message_board: MessageBoard,
 }
 
 enum State {
     Init,
-    Rendering(Rendering),
-    Error(ErrorMessage),
-}
-
-impl State {
-    fn is_rendering(&self) -> bool {
-        matches!(self, Self::Rendering(_))
-    }
+    Rendering(Box<Rendering>),
+    Error(Box<ErrorMessage>),
 }
 
 impl RenderUi for State {
@@ -141,6 +138,7 @@ impl RenderUi for State {
                 if r.show_frame_counter.get() {
                     r.frame_counter.draw(cmd, [10.0, 10.0]);
                 }
+                r.message_board.draw(cmd, size);
             }
             State::Error(e) => {
                 e.draw(cmd, size);
@@ -322,7 +320,7 @@ impl Application {
         let screen_shot = ScreenShot::new();
         let state = match src_settings.as_ref() {
             Ok(_) => State::Init,
-            Err(e) => State::Error(ErrorMessage::new(
+            Err(e) => State::Error(Box::new(ErrorMessage::new(
                 SETTINGS_PATH.clone(),
                 e,
                 &ui_props,
@@ -332,7 +330,7 @@ impl Application {
                     .to_logical(window_manager.main_window.dpi())
                     .cast(),
                 None,
-            )?),
+            )?)),
         };
         let mut this = Self {
             settings: src_settings.unwrap_or(default_settings),
@@ -399,13 +397,14 @@ impl Application {
             time: 0.0,
         };
         let frame_counter = FrameCounter::new(&self.ui_props)?;
-        self.set_state(State::Rendering(Rendering {
+        self.set_state(State::Rendering(Box::new(Rendering {
             path: path.to_path_buf(),
             parameters,
             ps,
             frame_counter,
             show_frame_counter: self.show_frame_counter.clone(),
-        }))
+            message_board: MessageBoard::new(&self.renderer.mltg_factory(), &self.ui_props, 10.0),
+        })))
         .await;
         self.play = self.settings.auto_play;
         self.timer = Timer::new();
@@ -466,8 +465,9 @@ impl Application {
                             self.show_frame_counter.set(!self.show_frame_counter.get());
                         }
                         Method::ScreenShot => {
-                            if self.state.is_rendering() {
+                            if let State::Rendering(r) = &mut self.state {
                                 self.screen_shot.save(&self.renderer).await?;
+                                r.message_board.write(MESSAGES.screen_shot)?;
                             }
                         }
                         Method::Play => {
@@ -485,19 +485,17 @@ impl Application {
                             }
                         }
                         Method::RecordVideo => {
-                            if self.state.is_rendering() {
+                            if let State::Rendering(r) = &mut self.state {
                                 if !VIDEO_PATH.is_dir() {
                                     std::fs::create_dir(&*VIDEO_PATH).unwrap();
                                 }
                                 self.timer = Timer::new();
-                                if let State::Rendering(r) = &mut self.state {
-                                    r.parameters.time = 0.0;
-                                }
+                                r.parameters.time = 0.0;
                                 if self.renderer.is_writing_video() {
-                                    info!("record video stop");
                                     self.renderer.stop_video();
+                                    info!("record video stop");
+                                    r.message_board.write(MESSAGES.record_video_end)?;
                                 } else {
-                                    info!("record video start");
                                     let frame_rate = self.settings.video.frame_rate;
                                     let end_frame =
                                         Some(self.settings.video.end_frame).filter(|i| *i > 0);
@@ -508,6 +506,8 @@ impl Application {
                                     ) {
                                         error!("record_video: {}", e);
                                     }
+                                    info!("record video start");
+                                    r.message_board.write(MESSAGES.record_video_start)?;
                                 }
                             }
                         }
@@ -677,13 +677,13 @@ impl Application {
             State::Error(e) => e.hlsl_path().cloned(),
             _ => None,
         };
-        self.set_state(State::Error(ErrorMessage::new(
+        self.set_state(State::Error(Box::new(ErrorMessage::new(
             path.to_path_buf(),
             &e,
             &self.ui_props,
             [size.width, size.height].into(),
             hlsl_path,
-        )?))
+        )?)))
         .await;
         error!("{}", e);
         Ok(())
