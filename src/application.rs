@@ -1,5 +1,6 @@
 mod error_message;
 mod frame_counter;
+mod message_board;
 
 use crate::*;
 use std::{
@@ -12,6 +13,7 @@ use windows::Win32::Graphics::{Direct3D::*, Direct3D12::*};
 
 use error_message::*;
 use frame_counter::*;
+use message_board::*;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Method {
@@ -118,18 +120,13 @@ struct Rendering {
     ps: pixel_shader::Pipeline,
     frame_counter: FrameCounter,
     show_frame_counter: Rc<Cell<bool>>,
+    message_board: MessageBoard,
 }
 
 enum State {
     Init,
     Rendering(Rendering),
     Error(ErrorMessage),
-}
-
-impl State {
-    fn is_rendering(&self) -> bool {
-        matches!(self, Self::Rendering(_))
-    }
 }
 
 impl RenderUi for State {
@@ -141,6 +138,7 @@ impl RenderUi for State {
                 if r.show_frame_counter.get() {
                     r.frame_counter.draw(cmd, [10.0, 10.0]);
                 }
+                r.message_board.draw(cmd, size);
             }
             State::Error(e) => {
                 e.draw(cmd, size);
@@ -405,6 +403,7 @@ impl Application {
             ps,
             frame_counter,
             show_frame_counter: self.show_frame_counter.clone(),
+            message_board: MessageBoard::new(&self.renderer.mltg_factory(), &self.ui_props, 10.0),
         }))
         .await;
         self.play = self.settings.auto_play;
@@ -466,8 +465,9 @@ impl Application {
                             self.show_frame_counter.set(!self.show_frame_counter.get());
                         }
                         Method::ScreenShot => {
-                            if self.state.is_rendering() {
+                            if let State::Rendering(r) = &mut self.state {
                                 self.screen_shot.save(&self.renderer).await?;
+                                r.message_board.write("screen shot")?;
                             }
                         }
                         Method::Play => {
@@ -485,18 +485,18 @@ impl Application {
                             }
                         }
                         Method::RecordVideo => {
-                            if self.state.is_rendering() {
+                            if let State::Rendering(r) = &mut self.state {
                                 if !VIDEO_PATH.is_dir() {
                                     std::fs::create_dir(&*VIDEO_PATH).unwrap();
                                 }
                                 self.timer = Timer::new();
-                                if let State::Rendering(r) = &mut self.state {
-                                    r.parameters.time = 0.0;
-                                }
+                                r.parameters.time = 0.0;
                                 if self.renderer.is_writing_video() {
+                                    r.message_board.write("record video stop")?;
                                     info!("record video stop");
                                     self.renderer.stop_video();
                                 } else {
+                                    r.message_board.write("record video start")?;
                                     info!("record video start");
                                     let frame_rate = self.settings.video.frame_rate;
                                     let end_frame =

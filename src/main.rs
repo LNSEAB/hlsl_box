@@ -123,7 +123,6 @@ fn panic_handler(info: &std::panic::PanicInfo) {
             }
         }
     };
-    std::process::exit(1);
 }
 
 fn set_locale() {
