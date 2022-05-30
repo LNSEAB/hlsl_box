@@ -125,8 +125,8 @@ struct Rendering {
 
 enum State {
     Init,
-    Rendering(Rendering),
-    Error(ErrorMessage),
+    Rendering(Box<Rendering>),
+    Error(Box<ErrorMessage>),
 }
 
 impl RenderUi for State {
@@ -320,7 +320,7 @@ impl Application {
         let screen_shot = ScreenShot::new();
         let state = match src_settings.as_ref() {
             Ok(_) => State::Init,
-            Err(e) => State::Error(ErrorMessage::new(
+            Err(e) => State::Error(Box::new(ErrorMessage::new(
                 SETTINGS_PATH.clone(),
                 e,
                 &ui_props,
@@ -330,7 +330,7 @@ impl Application {
                     .to_logical(window_manager.main_window.dpi())
                     .cast(),
                 None,
-            )?),
+            )?)),
         };
         let mut this = Self {
             settings: src_settings.unwrap_or(default_settings),
@@ -397,14 +397,14 @@ impl Application {
             time: 0.0,
         };
         let frame_counter = FrameCounter::new(&self.ui_props)?;
-        self.set_state(State::Rendering(Rendering {
+        self.set_state(State::Rendering(Box::new(Rendering {
             path: path.to_path_buf(),
             parameters,
             ps,
             frame_counter,
             show_frame_counter: self.show_frame_counter.clone(),
             message_board: MessageBoard::new(&self.renderer.mltg_factory(), &self.ui_props, 10.0),
-        }))
+        })))
         .await;
         self.play = self.settings.auto_play;
         self.timer = Timer::new();
@@ -467,7 +467,7 @@ impl Application {
                         Method::ScreenShot => {
                             if let State::Rendering(r) = &mut self.state {
                                 self.screen_shot.save(&self.renderer).await?;
-                                r.message_board.write("screen shot")?;
+                                r.message_board.write(MESSAGES.screen_shot)?;
                             }
                         }
                         Method::Play => {
@@ -492,12 +492,10 @@ impl Application {
                                 self.timer = Timer::new();
                                 r.parameters.time = 0.0;
                                 if self.renderer.is_writing_video() {
-                                    r.message_board.write("record video stop")?;
-                                    info!("record video stop");
                                     self.renderer.stop_video();
+                                    info!("record video stop");
+                                    r.message_board.write(MESSAGES.record_video_end)?;
                                 } else {
-                                    r.message_board.write("record video start")?;
-                                    info!("record video start");
                                     let frame_rate = self.settings.video.frame_rate;
                                     let end_frame =
                                         Some(self.settings.video.end_frame).filter(|i| *i > 0);
@@ -508,6 +506,8 @@ impl Application {
                                     ) {
                                         error!("record_video: {}", e);
                                     }
+                                    info!("record video start");
+                                    r.message_board.write(MESSAGES.record_video_start)?;
                                 }
                             }
                         }
@@ -677,13 +677,13 @@ impl Application {
             State::Error(e) => e.hlsl_path().cloned(),
             _ => None,
         };
-        self.set_state(State::Error(ErrorMessage::new(
+        self.set_state(State::Error(Box::new(ErrorMessage::new(
             path.to_path_buf(),
             &e,
             &self.ui_props,
             [size.width, size.height].into(),
             hlsl_path,
-        )?))
+        )?)))
         .await;
         error!("{}", e);
         Ok(())

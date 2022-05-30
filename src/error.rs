@@ -2,7 +2,7 @@ use crate::*;
 use std::path::PathBuf;
 use windows::Win32::Graphics::Direct3D::Dxc::*;
 
-struct Messages {
+struct ErrorMessages {
     read_file: &'static str,
     create_file: &'static str,
     remove_file: &'static str,
@@ -13,7 +13,7 @@ struct Messages {
     unknown_error: &'static str,
 }
 
-impl Messages {
+impl ErrorMessages {
     fn new(loc: Option<&str>) -> Self {
         match loc {
             Some("ja-JP") => Self {
@@ -40,7 +40,8 @@ impl Messages {
     }
 }
 
-static MESSAGES: Lazy<Messages> = Lazy::new(|| Messages::new(LOCALE.as_ref().map(|l| l.as_str())));
+static ERROR_MESSAGES: Lazy<ErrorMessages> =
+    Lazy::new(|| ErrorMessages::new(LOCALE.as_ref().map(|l| l.as_str())));
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
@@ -54,21 +55,21 @@ pub enum Error {
     Deserialize(#[from] toml::de::Error),
     #[error("{0}")]
     Compile(String),
-    #[error("{}({})", MESSAGES.read_file, .0.display())]
+    #[error("{}({})", ERROR_MESSAGES.read_file, .0.display())]
     ReadFile(PathBuf),
-    #[error("{}({})", MESSAGES.create_file, .0.display())]
+    #[error("{}({})", ERROR_MESSAGES.create_file, .0.display())]
     CreateFile(PathBuf),
-    #[error("{}({})", MESSAGES.remove_file, .0.display())]
+    #[error("{}({})", ERROR_MESSAGES.remove_file, .0.display())]
     RemoveFile(PathBuf),
-    #[error("{}", MESSAGES.file_too_large)]
+    #[error("{}", ERROR_MESSAGES.file_too_large)]
     FileTooLarge,
-    #[error("{}", MESSAGES.unsupported_version)]
+    #[error("{}", ERROR_MESSAGES.unsupported_version)]
     UnsupportedVersion,
-    #[error("{}", MESSAGES.invalid_version)]
+    #[error("{}", ERROR_MESSAGES.invalid_version)]
     InvalidVersion,
-    #[error("{}", MESSAGES.unexpected_eof)]
+    #[error("{}", ERROR_MESSAGES.unexpected_eof)]
     UnexceptedEof,
-    #[error("{}", MESSAGES.unknown_error)]
+    #[error("{}", ERROR_MESSAGES.unknown_error)]
     UnknownError,
     #[error("{}", .0)]
     TestErrorMessage(String),

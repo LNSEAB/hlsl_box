@@ -69,7 +69,10 @@ impl Anim for Rest {
             text_size.width + X_MARGIN * 2.0,
             text_size.height + Y_MARGIN * 2.0,
         );
-        let position = mltg::point(size.width + self.position.x - X_MARGIN * 2.0, self.position.y);
+        let position = mltg::point(
+            size.width + self.position.x - X_MARGIN * 2.0,
+            self.position.y,
+        );
         cmd.fill(&mltg::rect(position, bg_size), &self.ui_props.bg_color);
         cmd.draw_text_layout(
             &self.text,
@@ -142,7 +145,7 @@ impl MessageBoard {
         let text_size = text.size();
         let mut messages = self.messages.borrow_mut();
         let mut indices = messages.iter().map(|(_, i)| *i).collect::<Vec<_>>();
-        indices.sort();
+        indices.sort_unstable();
         let mut iy = 0;
         for i in indices.iter() {
             if iy != *i {
@@ -157,7 +160,7 @@ impl MessageBoard {
             start_position: (0.0, y).into(),
             end_position: (-text_size.width, y).into(),
             t: 0.0,
-            end_time: 0.1,
+            end_time: 0.07,
         };
         let rest = Rest {
             ui_props: self.ui_props.clone(),
@@ -168,7 +171,7 @@ impl MessageBoard {
         };
         let slide_out = Slide {
             ui_props: self.ui_props.clone(),
-            text: text.clone(),
+            text,
             start_position: slide_in.end_position,
             end_position: slide_in.start_position,
             t: 0.0,

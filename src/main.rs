@@ -3,6 +3,7 @@
 mod application;
 mod error;
 mod hlsl;
+mod messages;
 mod monitor;
 mod renderer;
 mod settings;
@@ -17,6 +18,7 @@ use windows::Win32::{Globalization::*, System::Com::*};
 
 use application::{Application, Method};
 use error::Error;
+use messages::MESSAGES;
 use monitor::*;
 use renderer::*;
 use settings::Settings;
